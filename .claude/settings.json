@@ -1,0 +1,6 @@
+{
+  "includeCoAuthoredBy": true,
+  "contextFiles": [
+    ".claude/catan-rules.md"
+  ]
+}
