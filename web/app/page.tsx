@@ -363,8 +363,14 @@ export default function Home() {
     >
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-6 py-3">
-        <div style={{ background: "rgba(10,10,20,0.9)", border: "1px solid rgba(0,212,255,0.3)", padding: "6px 20px 6px 12px" }}>
-          <span className="text-sm font-bold tracking-widest uppercase" style={{ color: "#00d4ff" }}>CATAN v2</span>
+        <div className="flex items-center gap-3">
+          <div style={{ background: "rgba(10,10,20,0.9)", border: "1px solid rgba(0,212,255,0.3)", padding: "6px 20px 6px 12px" }}>
+            <span className="text-sm font-bold tracking-widest uppercase" style={{ color: "#00d4ff" }}>CATAN v2</span>
+          </div>
+          <a href="/game-3d" className="text-xs font-bold tracking-widest uppercase px-3 py-1.5"
+            style={{ background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.4)", color: "#00d4ff", textDecoration: "none" }}>
+            3D Map →
+          </a>
         </div>
 
         <div className="flex gap-3 items-center">

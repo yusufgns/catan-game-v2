@@ -31,32 +31,6 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.03) 2px,
-    rgba(0, 0, 0, 0.03) 4px
-  );
   pointer-events: none;
   z-index: 9999;
-}
-
-/* Cut-corner utility (Valorant style) */
-.clip-corner-tl {
-  clip-path: polygon(16px 0%, 100% 0%, 100% 100%, 0% 100%, 0% 16px);
-}
-.clip-corner-tr {
-  clip-path: polygon(0% 0%, calc(100% - 16px) 0%, 100% 16px, 100% 100%, 0% 100%);
-}
-.clip-corner-both {
-  clip-path: polygon(16px 0%, calc(100% - 16px) 0%, 100% 16px, 100% 100%, calc(100% - 16px) 100%, 16px 100%, 0% calc(100% - 16px), 0% 16px);
-}
-
-/* Neon glow text */
-.glow-cyan {
-  text-shadow: 0 0 10px var(--accent-cyan), 0 0 20px var(--accent-cyan);
-}
-.glow-gold {
-  text-shadow: 0 0 10px var(--accent-gold), 0 0 20px var(--accent-gold);
 }
