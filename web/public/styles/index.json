@@ -1,0 +1,20 @@
+[
+  {
+    "id": "elemental-serenity",
+    "name": "Elemental Serenity",
+    "description": "Anime toon shading with 4-step gradient and cel outlines",
+    "preview": "#d4956a"
+  },
+  {
+    "id": "clay",
+    "name": "Clay",
+    "description": "Warm plasticine-style with soft standard shading, no outlines",
+    "preview": "#e07a5f"
+  },
+  {
+    "id": "storybook",
+    "name": "Storybook",
+    "description": "Premium cute 3D toy — soft physical shading, warm glow, no outlines",
+    "preview": "#78d040"
+  }
+]

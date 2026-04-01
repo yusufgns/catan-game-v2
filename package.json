@@ -1,0 +1,13 @@
+{
+  "name": "catan-v2",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:web": "pnpm --filter web dev"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

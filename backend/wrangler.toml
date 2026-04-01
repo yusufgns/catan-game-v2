@@ -1,0 +1,22 @@
+name = "catan-backend"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[durable_objects]
+bindings = [
+  { name = "GAME_ROOM", class_name = "GameRoom" },
+  { name = "LOBBY_ROOM", class_name = "LobbyRoom" },
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["GameRoom", "LobbyRoom"]
+
+# Set secrets via: wrangler secret put NEON_DATABASE_URL
+# wrangler secret put GOOGLE_CLIENT_ID
+# wrangler secret put GOOGLE_CLIENT_SECRET
+# wrangler secret put RESEND_API_KEY
+
+[vars]
+FRONTEND_URL = "http://localhost:3000"

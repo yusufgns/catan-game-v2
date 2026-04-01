@@ -16,9 +16,9 @@ import type { Hex } from "@/lib/hexGrid";
 import type { BoardGraph } from "@/lib/boardGraph";
 import type { Player, ActionMode } from "@/lib/gameTypes";
 import { canPlaceSettlement, canPlaceRoad } from "@/lib/gameRules";
-import { Settlement3D } from "@/public/test/setlement-3d";
-import { City3D } from "@/public/test/city-3d";
-import { Road3D } from "@/public/test/road-3d";
+import { Settlement3D } from "@/components/board3d/Settlement3D";
+import { City3D } from "@/components/board3d/City3D";
+import { Road3D } from "@/components/board3d/Road3D";
 
 const BOARD_HEX_SIZE = 72;
 const PIECE_SCALE = 0.38;
@@ -323,7 +323,7 @@ export function Board3D({
                 color={roadPlayer.color}
                 position={[0, 0, 0]}
                 scale={PIECE_SCALE}
-                rotation={rotation}
+                rotationY={rotation}
                 shadows
               />
             )}
