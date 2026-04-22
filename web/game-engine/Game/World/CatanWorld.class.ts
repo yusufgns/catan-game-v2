@@ -139,8 +139,8 @@ export default class CatanWorld {
         ambient.color.setHex(0x3a5a8a);
         ambient.intensity = 0.25;
       } else {
-        // Daytime — ensure bright enough even in rainy season
-        ambient.intensity = Math.max(ambient.intensity, 0.55);
+        // Daytime — ensure bright and vibrant
+        ambient.intensity = Math.max(ambient.intensity, 0.65);
       }
     }
 
@@ -148,14 +148,14 @@ export default class CatanWorld {
 
     if (!isNight) {
       if (season === 'rainy') {
-        // Rainy day — brighter than default rainy preset
-        if (key) key.intensity = 2.2;
-        if (fill) fill.intensity = 0.6;
-        if (ambient) ambient.intensity = 0.6;
+        if (key) key.intensity = 2.4;
+        if (fill) fill.intensity = 0.7;
+        if (ambient) ambient.intensity = 0.7;
       } else {
-        // Normal day (spring/autumn/winter) — slightly toned down, not overblown
-        if (key) key.intensity = Math.min(key.intensity, 1.8);
-        if (ambient) ambient.intensity = Math.min(ambient.intensity, 0.45);
+        // Vibrant daytime — bright and colorful
+        if (key) { key.intensity = Math.max(key.intensity, 2.2); key.color.setHex(0xfff8e8); }
+        if (fill) fill.intensity = Math.max(fill.intensity, 0.5);
+        if (ambient) { ambient.intensity = Math.max(ambient.intensity, 0.65); ambient.color.setHex(0xf0f0ff); }
       }
     }
   }

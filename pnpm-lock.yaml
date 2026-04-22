@@ -56,6 +56,9 @@ importers:
 
   web:
     dependencies:
+      '@catan/core':
+        specifier: workspace:*
+        version: link:../packages/catan-core
       '@react-three/drei':
         specifier: ^10.7.7
         version: 10.7.7(@react-three/fiber@9.5.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(three@0.183.2))(@types/react@19.2.14)(@types/three@0.183.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(three@0.183.2)
@@ -98,6 +101,9 @@ importers:
       three-perf:
         specifier: ^1.0.11
         version: 1.0.11(three@0.183.2)
+      zustand:
+        specifier: ^5.0.12
+        version: 5.0.12(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4

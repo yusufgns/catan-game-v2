@@ -7,6 +7,7 @@ export const users = pgTable('users', {
   email: text('email').unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   name: text('name').notNull(),
+  tag: text('tag').notNull().unique(),       // globally unique random 5-digit tag e.g. "57934"
   avatarUrl: text('avatar_url'),
   googleId: text('google_id').unique(),
   isGuest: boolean('is_guest').notNull().default(false),
@@ -123,6 +124,8 @@ export const userStats = pgTable('user_stats', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   gamesPlayed: integer('games_played').notNull().default(0),
   gamesWon: integer('games_won').notNull().default(0),
+  rankedGamesPlayed: integer('ranked_games_played').notNull().default(0),
+  rankedGamesWon: integer('ranked_games_won').notNull().default(0),
   totalVp: integer('total_vp').notNull().default(0),
   longestRoads: integer('longest_roads').notNull().default(0),
   largestArmies: integer('largest_armies').notNull().default(0),

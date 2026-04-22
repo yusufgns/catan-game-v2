@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     },
   },
   sassOptions: {},
+  // Hide the dev-mode "N" indicator in the corner. Re-enable by deleting this block.
+  devIndicators: false,
 };
 
 export default nextConfig;

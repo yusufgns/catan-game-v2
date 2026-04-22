@@ -33,6 +33,7 @@ export default class CatanGameState {
   actionMode: string;
   phase: string;
   longestRoadHolder: string | null;
+  largestArmyHolder: string | null;
   setupConstraint: string | null;
   diceRolled: boolean;
   diceValues: [number, number] | null;
@@ -42,21 +43,49 @@ export default class CatanGameState {
   devCardDeck: DevCardType[];
   _listeners: ((state: any) => void)[];
 
-  constructor(mode: GameMode = 'classic', boardData?: any[]) {
+  // Turn timer (synced from server in multiplayer)
+  turnDeadline: number | null;
+  turnTimerMs: number;
+  serverTime: number;
+  botReplacedPlayers: Record<string, string>;
+
+  // Multiplayer trade state (synced from server)
+  activeTrades: any[];
+  myPlayerId: string | null;
+
+  // Forced discard state after a 7-roll
+  discardRequired: Record<string, number>;
+  discardDeadline: number | null;
+
+  // Final GAME_OVER / GAME_RESULTS payload (server-computed ELO/XP/level deltas)
+  gameResults: any | null;
+
+  constructor(mode: GameMode = 'classic', boardData?: any[], customPlayers?: any[]) {
     this.mode = mode;
     this.hexes = boardData ? [...boardData] : (mode === 'ranked' ? generateRandomBoard() : [...BEGINNER_BOARD]);
     this.graph = buildBoardGraph(this.hexes);
-    this.players = INITIAL_PLAYERS.map(p => ({ ...p, resources: { ...EMPTY_RESOURCES }, devCards: { ...EMPTY_DEV_CARDS }, settlements: [], cities: [], roads: [] }));
+    const basePlayers = customPlayers && customPlayers.length >= 2 ? customPlayers : INITIAL_PLAYERS;
+    this.players = basePlayers.map(p => ({ ...p, resources: { ...EMPTY_RESOURCES }, devCards: { ...EMPTY_DEV_CARDS }, settlements: [], cities: [], roads: [] }));
     this.devCardDeck = createDevCardDeck();
     this.currentPlayerIndex = 0;
     this.actionMode = 'settlement';
     this.phase = 'setup1';
     this.longestRoadHolder = null;
+    this.largestArmyHolder = null;
     this.setupConstraint = null;
     this.diceRolled = false;
     this.diceValues = null;
     this.stealTargets = [];
     this.winner = null;
+    this.turnDeadline = null;
+    this.turnTimerMs = 0;
+    this.serverTime = Date.now();
+    this.botReplacedPlayers = {};
+    this.activeTrades = [];
+    this.myPlayerId = null;
+    this.discardRequired = {};
+    this.discardDeadline = null;
+    this.gameResults = null;
 
     const desert = this.hexes.find((h: any) => h.type === 'desert');
     this.robberHex = desert ? `${desert.q},${desert.r}` : '0,0';
@@ -127,7 +156,8 @@ export default class CatanGameState {
   computeVP(player: any): number {
     return player.settlements.length + player.cities.length * 2
       + (player.devCards?.victoryPoint || 0)
-      + (this.longestRoadHolder === player.id ? 2 : 0);
+      + (this.longestRoadHolder === player.id ? 2 : 0)
+      + (this.largestArmyHolder === player.id ? 2 : 0);
   }
 
   canAffordRoad(): boolean {
@@ -365,6 +395,7 @@ export default class CatanGameState {
     this.phase = 'setup1';
     this.actionMode = 'settlement';
     this.longestRoadHolder = null;
+    this.largestArmyHolder = null;
     this.setupConstraint = null;
     this.diceRolled = false;
     this.diceValues = null;

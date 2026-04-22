@@ -3,7 +3,9 @@ import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from './schema';
 
 export function createDb(databaseUrl: string) {
-  const sql = neon(databaseUrl);
+  const sql = neon(databaseUrl, {
+    fetchOptions: { keepalive: true },
+  });
   return drizzle(sql, { schema });
 }
 

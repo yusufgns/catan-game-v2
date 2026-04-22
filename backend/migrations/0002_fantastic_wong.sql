@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS "idx_users_name_tag" ON "users" USING btree ("name","tag");

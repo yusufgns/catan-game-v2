@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Settings, LogOut, MessageCircle, ScrollText, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 interface SideMenuProps {
@@ -292,11 +292,19 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
 // ─── Game Log Panel ────────────────────────────────────────────────────
 
 export function LogPanel({ logs, onClose }: { logs: string[]; onClose: () => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [logs]);
+
   return (
     <div
       style={{
-        width: 280,
-        height: 240,
+        width: 320,
+        height: 400,
         display: "flex",
         flexDirection: "column",
         ...glassStyle,
@@ -328,6 +336,7 @@ export function LogPanel({ logs, onClose }: { logs: string[]; onClose: () => voi
 
       {/* Log entries */}
       <div
+        ref={scrollRef}
         style={{
           flex: 1,
           overflowY: "auto",

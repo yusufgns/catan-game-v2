@@ -7,9 +7,12 @@ interface ActionBarProps {
   isSetup: boolean;
   actionMode: string;
   diceRolled: boolean;
+  isMyTurn?: boolean;
   onRoll: () => void;
   onEndTurn: () => void;
   onSetMode: (mode: string) => void;
+  onTrade?: () => void;
+  canTrade?: boolean;
   remainingRoads?: number;
   remainingSettlements?: number;
   remainingCities?: number;
@@ -19,7 +22,8 @@ interface ActionBarProps {
 }
 
 export default function ActionBar({
-  isSetup, actionMode, diceRolled, onRoll, onEndTurn, onSetMode,
+  isSetup, actionMode, diceRolled, isMyTurn = true,
+  onRoll, onEndTurn, onSetMode, onTrade, canTrade = false,
   remainingRoads = 15, remainingSettlements = 5, remainingCities = 4,
   canAffordRoad = true, canAffordSettlement = true, canAffordCity = true,
 }: ActionBarProps) {
@@ -52,7 +56,8 @@ export default function ActionBar({
   }
 
   const isRobberPhase = actionMode === "robber" || actionMode === "steal";
-  const canEndTurn = diceRolled && !isRobberPhase;
+  const canEndTurn = diceRolled && !isRobberPhase && isMyTurn;
+  const canRoll = !diceRolled && isMyTurn;
 
   const builds: { mode: string; label: string; count: number; icon: ReactNode; affordable: boolean }[] = [
     { mode: "road", label: "Road", count: remainingRoads, icon: <Route size={20} />, affordable: canAffordRoad },
@@ -78,6 +83,7 @@ export default function ActionBar({
       >
         {/* Trade */}
         <button
+          onClick={canTrade ? onTrade : undefined}
           style={{
             flex: 1,
             height: 56,
@@ -86,21 +92,23 @@ export default function ActionBar({
             alignItems: "center",
             justifyContent: "center",
             gap: 3,
-            background: "rgba(217,119,6,0.08)",
+            background: canTrade ? "rgba(217,119,6,0.08)" : "transparent",
             border: "none",
             borderRight: "1px solid rgba(0,0,0,0.06)",
-            cursor: "pointer",
+            cursor: canTrade ? "pointer" : "default",
+            opacity: canTrade ? 1 : 0.35,
+            transition: "all 0.15s ease",
           }}
         >
-          <ArrowLeftRight size={18} style={{ color: "#92400e" }} />
-          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, color: "#92400e", textTransform: "uppercase" }}>
+          <ArrowLeftRight size={18} style={{ color: canTrade ? "#92400e" : "rgba(0,0,0,0.3)" }} />
+          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, color: canTrade ? "#92400e" : "rgba(0,0,0,0.3)", textTransform: "uppercase" }}>
             Trade
           </span>
         </button>
 
         {/* Roll */}
         <button
-          onClick={!diceRolled ? onRoll : undefined}
+          onClick={canRoll ? onRoll : undefined}
           style={{
             flex: 1.5,
             height: 56,
@@ -108,19 +116,19 @@ export default function ActionBar({
             alignItems: "center",
             justifyContent: "center",
             gap: 7,
-            background: diceRolled ? "transparent" : "rgba(34,197,94,0.12)",
+            background: canRoll ? "rgba(34,197,94,0.12)" : "transparent",
             border: "none",
             borderRight: "1px solid rgba(0,0,0,0.06)",
-            cursor: diceRolled ? "default" : "pointer",
+            cursor: canRoll ? "pointer" : "default",
             transition: "background 0.15s ease",
           }}
         >
-          <Dice5 size={20} style={{ color: diceRolled ? "rgba(0,0,0,0.25)" : "#15803d" }} />
+          <Dice5 size={20} style={{ color: canRoll ? "#15803d" : "rgba(0,0,0,0.25)" }} />
           <span
             style={{
               fontSize: 12,
               fontWeight: 900,
-              color: diceRolled ? "rgba(0,0,0,0.25)" : "#15803d",
+              color: canRoll ? "#15803d" : "rgba(0,0,0,0.25)",
               letterSpacing: 1,
             }}
           >

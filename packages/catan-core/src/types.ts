@@ -91,7 +91,12 @@ export interface TradeOffer {
   toPlayerId?: string; // undefined = open to all
   offer: Partial<Resources>;
   want: Partial<Resources>;
+  acceptedBy: string[]; // recipients who pre-accepted; offerer finalizes by picking one
+  createdAt: number;   // ms epoch — for timeout tracking
+  expiresAt: number;   // ms epoch — when trade auto-cancels if no action
 }
+
+export const TRADE_TTL_MS = 30_000; // trades auto-expire after 30s of inactivity
 
 export interface GameState {
   id: string;
@@ -109,9 +114,16 @@ export interface GameState {
   diceRolled: boolean;
   diceValues: [number, number] | null;
   stealTargets: string[];
-  activeTrade: TradeOffer | null;
+  activeTrades: TradeOffer[];
+  /** Map of playerId → cards they still owe to the bank after a 7-roll. */
+  discardRequired: Record<string, number>;
+  /** ms epoch when forced discards auto-resolve. null when no discard pending. */
+  discardDeadline: number | null;
   winner: string | null;
 }
+
+export const DISCARD_TIMEOUT_MS = 10_000;
+export const DISCARD_THRESHOLD = 7; // strictly more than this triggers discard
 
 /** Public game state sent to clients (no hidden info) */
 export interface PublicGameState extends Omit<GameState, "devCardDeck" | "players"> {

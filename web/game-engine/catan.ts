@@ -8,18 +8,26 @@ import CatanGameState from './Game/World/Components/CatanBoard/CatanGameState';
 import type { GameMode } from './Game/World/Components/CatanBoard/CatanGameState';
 
 import { BEGINNER_BOARD, generateRandomBoard } from './game-logic/hexGrid';
-
+import { buildBoardGraph } from './game-logic/boardGraph';
+import { canPlaceSettlement as canPlaceSettlementFn, canPlaceRoad as canPlaceRoadFn } from './game-logic/gameRules';
+import { createMultiplayerAdapter, syncServerStateToLocal, type MultiplayerAdapter } from './multiplayer';
 
 let gameRef: any = null;
 let catanStateRef: any = null;
 let activeBoardData: any[] | null = null;
+let multiplayerRef: MultiplayerAdapter | null = null;
 
 export function getActiveBoardData() { return activeBoardData; }
 
 export function getGameState() { return catanStateRef; }
 export function getGameRef() { return gameRef; }
+export function getMultiplayerRef() { return multiplayerRef; }
 
 export function destroyCatan(): void {
+  if (multiplayerRef) {
+    multiplayerRef.disconnect();
+    multiplayerRef = null;
+  }
   if (catanStateRef) {
     catanStateRef._listeners = [];
     catanStateRef = null;
@@ -373,8 +381,128 @@ function initCatanGameplay(game: any) {
   const board = game.world?.catanBoard;
   if (!board) { console.warn('No CatanBoard found'); return; }
 
-  const gameState = new CatanGameState(gameMode, activeBoardData!);
+  // Check if this is a multiplayer game
+  const gameId = new URLSearchParams(window.location.search).get('gameId');
+  const isMultiplayer = !!gameId;
+
+  // Read custom players from localStorage (set by room page) — only for local mode
+  let customPlayers: any[] | undefined;
+  if (!isMultiplayer) {
+    try {
+      const stored = localStorage.getItem('catan_game_players');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length >= 2) {
+          const defaultColors = ['#d97706', '#2563eb', '#16a34a', '#dc2626', '#8b5cf6', '#ec4899'];
+          customPlayers = parsed.map((p: any, i: number) => ({
+            id: p.id || `p${i + 1}`,
+            name: p.name || `Player ${i + 1}`,
+            color: p.color || defaultColors[i % defaultColors.length],
+          }));
+        }
+        localStorage.removeItem('catan_game_players');
+      }
+    } catch {}
+  } else {
+    // Multiplayer: empty placeholder players — server will fill them
+    customPlayers = [
+      { id: '_wait1', name: '...', color: '#999' },
+      { id: '_wait2', name: '...', color: '#999' },
+    ];
+  }
+
+  const gameState = new CatanGameState(gameMode, activeBoardData!, customPlayers);
   catanStateRef = gameState;
+
+  // ── Multiplayer setup ─────────────────────────────────────────────────
+  let userId: string | null = null;
+  let mp: MultiplayerAdapter | null = null;
+
+  if (isMultiplayer) {
+    mp = createMultiplayerAdapter();
+    multiplayerRef = mp;
+
+    // Mark local state as "waiting for server" — don't let local game run
+    gameState.phase = 'waiting' as any;
+    gameState.actionMode = 'idle';
+
+    mp.onStateUpdate = (serverState: any) => {
+      // Full sync from server — this is the single source of truth
+      syncServerStateToLocal(gameState, serverState);
+      // Re-build graph if hexes came from server
+      if (serverState.hexes && serverState.hexes.length > 0) {
+        gameState.hexes = serverState.hexes;
+        gameState.graph = buildBoardGraph(serverState.hexes);
+      }
+    };
+
+    mp.onPrivateState = (resources: any, devCards: any) => {
+      const myPlayer = gameState.players.find((p: any) => p.id === mp?.playerId);
+      if (myPlayer) {
+        myPlayer.resources = resources;
+        myPlayer.devCards = devCards;
+        gameState._emit();
+      }
+    };
+
+    mp.onError = (message: string) => {
+      console.error('[Multiplayer Error]', message);
+      // Show error as a temporary toast so user knows
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#dc2626;color:white;padding:8px 20px;border-radius:8px;font-size:13px;font-weight:700;z-index:999;pointer-events:none;';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    };
+
+    mp.onConnected = () => {
+      console.log('[Multiplayer] Connected to GameRoom');
+    };
+
+    mp.onGameResults = (payload: any) => {
+      // Merge partial GAME_OVER (no ELO yet) with follow-up GAME_RESULTS
+      const prev = (gameState as any).gameResults ?? null;
+      (gameState as any).gameResults = { ...(prev ?? {}), ...payload };
+      gameState._emit();
+    };
+
+    mp.onSessionReplaced = () => {
+      console.warn('[Multiplayer] Session replaced by another tab');
+      (window as any).__catanSessionReplaced = true;
+      (window as any).__catanSessionReplacedCallback?.();
+    };
+
+    mp.onReplacedByBot = (reason: string) => {
+      console.warn('[Multiplayer] Replaced by bot:', reason);
+      (window as any).__catanReplacedByBot = true;
+      (window as any).__catanReplacedByBotCallback?.();
+    };
+
+    mp.onGameLog = (message: string) => {
+      const logs = (window as any).__catanGameLogs || [];
+      logs.push(message);
+      if (logs.length > 100) logs.splice(0, logs.length - 100);
+      (window as any).__catanGameLogs = logs;
+      (window as any).__catanGameLogsUpdated?.();
+    };
+
+    mp.onGameLogHistory = (logs: string[]) => {
+      (window as any).__catanGameLogs = [...logs];
+      (window as any).__catanGameLogsUpdated?.();
+    };
+
+    // Get user ID and connect
+    fetch((process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787') + '/user/me', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.user?.id && gameId) {
+          userId = data.user.id;
+          (gameState as any).myPlayerId = data.user.id;
+          mp!.connect(gameId, data.user.id);
+        }
+      })
+      .catch(() => {});
+  }
 
   const canvas = document.getElementById('three')!;
   const camera = game.camera.cameraInstance;
@@ -444,6 +572,16 @@ function initCatanGameplay(game: any) {
     // idle mode: markers invisible until hovered (hoverOnly=true)
     // explicit action mode (settlement/road/city): show silhouettes at all valid positions
     const isIdle = gameState.actionMode === 'idle';
+    if (validInts.size === 0 && validEdges.size === 0 && !isIdle) {
+      console.warn('[Markers] No valid placements!', {
+        actionMode: gameState.actionMode,
+        phase: gameState.phase,
+        currentPlayer: gameState.currentPlayer?.id,
+        setupConstraint: gameState.setupConstraint,
+        playerCount: gameState.players?.length,
+        graphIntersections: gameState.graph?.intersections?.size,
+      });
+    }
     board.showIntersections(validInts, isIdle);
     board.showEdges(validEdges, isIdle);
   }
@@ -570,36 +708,209 @@ function initCatanGameplay(game: any) {
     }
   }
 
+  // ── Bot AI ───────────────────────────────────────────────────────────
+  let botTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function isBotPlayer(player: any): boolean {
+    return player.id?.startsWith('bot_');
+  }
+
+  function botPlay() {
+    if (gameState.winner) return;
+    const cp = gameState.currentPlayer;
+    if (!cp || !isBotPlayer(cp)) return;
+
+    const graph = gameState.graph;
+    const players = gameState.players;
+    const playerId = cp.id;
+
+    // Setup phase: place settlement then road
+    if (gameState.isSetup) {
+      if (gameState.actionMode === 'settlement') {
+        // Find best intersection (highest adjacent hex pip sum)
+        let bestId = '';
+        let bestScore = -1;
+        for (const [intId, inter] of graph.intersections) {
+          if (!canPlaceSettlementFn(intId, graph, players, playerId)) continue;
+          // Score by adjacent hex numbers
+          let score = 0;
+          for (const [hexKey, intIds] of graph.hexIntersections) {
+            if (!intIds.includes(intId)) continue;
+            const hex = gameState.hexes.find((h: any) => `${h.q},${h.r}` === hexKey);
+            if (hex?.number) score += (6 - Math.abs(7 - hex.number));
+          }
+          if (score > bestScore) { bestScore = score; bestId = intId; }
+        }
+        if (bestId) gameState.handleIntersectionClick(bestId);
+        return;
+      }
+      if (gameState.actionMode === 'road') {
+        // Find valid road adjacent to setup constraint
+        for (const [edgeId, edge] of graph.edges) {
+          if (gameState.setupConstraint && !edge.intersections.includes(gameState.setupConstraint)) continue;
+          if (canPlaceRoadFn(edgeId, graph, players, playerId)) {
+            gameState.handleEdgeClick(edgeId);
+            return;
+          }
+        }
+        return;
+      }
+      return;
+    }
+
+    // Main phase
+    if (!gameState.diceRolled) {
+      gameState.rollDice();
+      return;
+    }
+
+    // Robber mode
+    if (gameState.actionMode === 'robber') {
+      // Move robber to random non-desert, non-current hex
+      for (const hex of gameState.hexes) {
+        if (hex.type === 'desert' || hex.type === 'ocean') continue;
+        const hexKey = `${hex.q},${hex.r}`;
+        if (hexKey === gameState.robberHex) continue;
+        gameState.handleHexClick(hexKey);
+        return;
+      }
+      return;
+    }
+
+    // Steal mode
+    if (gameState.actionMode === 'steal' && gameState.stealTargets.length > 0) {
+      gameState.handleSteal(gameState.stealTargets[0]);
+      return;
+    }
+
+    // Try to build (simple priority: city > settlement > road)
+    const res = cp.resources;
+
+    // City
+    if (res.grain >= 2 && res.ore >= 3 && cp.settlements.length > 0) {
+      const intId = cp.settlements[0];
+      gameState.handleIntersectionClick(intId);
+      if (gameState.actionMode === 'idle') return; // action was taken
+    }
+
+    // Settlement
+    if (res.lumber >= 1 && res.brick >= 1 && res.wool >= 1 && res.grain >= 1) {
+      for (const [intId] of graph.intersections) {
+        if (canPlaceSettlementFn(intId, graph, players, playerId)) {
+          gameState.handleIntersectionClick(intId);
+          return;
+        }
+      }
+    }
+
+    // Road
+    if (res.lumber >= 1 && res.brick >= 1) {
+      for (const [edgeId] of graph.edges) {
+        if (canPlaceRoadFn(edgeId, graph, players, playerId)) {
+          gameState.handleEdgeClick(edgeId);
+          return;
+        }
+      }
+    }
+
+    // Dev card
+    if (gameState.canBuyDevCard()) {
+      gameState.buyDevCard();
+      return;
+    }
+
+    // End turn
+    gameState.endTurn();
+  }
+
+  function scheduleBotTurn() {
+    if (botTimer) clearTimeout(botTimer);
+    const cp = gameState.currentPlayer;
+    if (cp && isBotPlayer(cp) && !gameState.winner) {
+      // Delay to feel natural: 800-1500ms
+      const delay = 800 + Math.random() * 700;
+      botTimer = setTimeout(() => {
+        botPlay();
+        // Bot might need multiple actions per turn (roll → build → end)
+        scheduleBotTurn();
+      }, delay);
+    }
+  }
+
   // ── Game state change handler ────────────────────────────────────────
   gameState.onChange(() => {
     updateMarkers();
     syncPieces();
     syncRobber();
     updateHUD();
+    // Bot AI only in local mode — in multiplayer, bots run on backend
+    if (!isMultiplayer) scheduleBotTurn();
   });
 
   // ── Click handler (raycasting) ───────────────────────────────────────
+  // Helper: route action through multiplayer or local
+  function handleAction(action: any) {
+    if (isMultiplayer && mp?.isOnline) {
+      mp.sendAction(action);
+    } else {
+      // Local mode — handle directly
+      switch (action.type) {
+        case 'BUILD_SETTLEMENT':
+          gameState.handleIntersectionClick(action.intersectionId);
+          break;
+        case 'BUILD_CITY':
+          gameState.handleIntersectionClick(action.intersectionId);
+          break;
+        case 'BUILD_ROAD':
+          gameState.handleEdgeClick(action.edgeId);
+          break;
+        case 'MOVE_ROBBER':
+          gameState.handleHexClick(action.hexId);
+          break;
+        case 'ROLL_DICE':
+          gameState.rollDice();
+          break;
+        case 'END_TURN':
+          gameState.endTurn();
+          break;
+        case 'BUY_DEV_CARD':
+          gameState.buyDevCard();
+          break;
+        case 'CHOOSE_STEAL':
+          if (action.targetId) gameState.handleSteal(action.targetId);
+          break;
+      }
+    }
+  }
+
+  // Expose handleAction for HUD buttons
+  (window as any).__catanAction = handleAction;
+
   canvas.addEventListener('click', () => {
     if (wasDrag) return;
 
     raycaster.setFromCamera(pointer, camera);
 
-    // Check intersection markers (Groups — raycast recursive, find parent id)
+    // Check intersection markers
     const intHits = raycaster.intersectObjects(
       [...board.intersectionMeshes.values()].filter(g => g.visible),
       true
     );
     if (intHits.length > 0) {
-      // Walk up to find the Group with userData.id
       let obj: any = intHits[0].object;
       while (obj && !obj.userData?.id) obj = obj.parent;
       if (obj?.userData?.id) {
-        gameState.handleIntersectionClick(obj.userData.id);
+        const intId = obj.userData.id;
+        const isUpgrade = gameState.currentPlayer?.settlements?.includes(intId);
+        handleAction(isUpgrade
+          ? { type: 'BUILD_CITY', intersectionId: intId }
+          : { type: 'BUILD_SETTLEMENT', intersectionId: intId }
+        );
         return;
       }
     }
 
-    // Check edge markers (Groups — raycast recursive)
+    // Check edge markers
     const edgeHits = raycaster.intersectObjects(
       [...board.edgeMeshes.values()].filter(g => g.visible),
       true
@@ -608,14 +919,13 @@ function initCatanGameplay(game: any) {
       let obj: any = edgeHits[0].object;
       while (obj && !obj.userData?.id) obj = obj.parent;
       if (obj?.userData?.id) {
-        gameState.handleEdgeClick(obj.userData.id);
+        handleAction({ type: 'BUILD_ROAD', edgeId: obj.userData.id });
         return;
       }
     }
 
-    // Robber mode — click on hex markers or hex tiles to move robber
+    // Robber mode
     if (gameState.actionMode === 'robber') {
-      // First check hex markers (floating circles)
       const hexMarkerHits = raycaster.intersectObjects(
         [...board.hexMarkers.values()].filter((g: any) => g.visible),
         true
@@ -624,11 +934,10 @@ function initCatanGameplay(game: any) {
         let obj: any = hexMarkerHits[0].object;
         while (obj && !obj.userData?.id) obj = obj.parent;
         if (obj?.userData?.id) {
-          gameState.handleHexClick(obj.userData.id);
+          handleAction({ type: 'MOVE_ROBBER', hexId: obj.userData.id, stealFrom: null });
           return;
         }
       }
-      // Fallback: click on hex tiles directly
       const allHexMeshes: any[] = [];
       board.group.traverse((child: any) => {
         if (child.isMesh && child.userData.hexKey) allHexMeshes.push(child);
@@ -637,7 +946,7 @@ function initCatanGameplay(game: any) {
       if (hexHits.length > 0) {
         const hexKey = hexHits[0].object.userData.hexKey;
         if (hexKey) {
-          gameState.handleHexClick(hexKey);
+          handleAction({ type: 'MOVE_ROBBER', hexId: hexKey, stealFrom: null });
           return;
         }
       }
@@ -652,7 +961,7 @@ function initCatanGameplay(game: any) {
     <div id="hud-phase" style="position:fixed;top:12px;left:50%;transform:translateX(-50%);
       background:rgba(8,15,30,0.90);border:1px solid rgba(255,255,255,0.12);
       border-radius:8px;padding:8px 20px;backdrop-filter:blur(8px);z-index:50;
-      display:flex;align-items:center;gap:12px;font-family:Inter,sans-serif;">
+      display:none;align-items:center;gap:12px;font-family:Inter,sans-serif;">
       <span id="hud-player" style="font-weight:700;font-size:13px;"></span>
       <span id="hud-action" style="font-size:12px;color:rgba(255,255,255,0.5);"></span>
       <button id="hud-roll" style="display:none;padding:4px 16px;background:rgba(255,215,0,0.15);
@@ -682,8 +991,8 @@ function initCatanGameplay(game: any) {
   const cityBtn = document.getElementById('hud-build-city');
   const roadBtn = document.getElementById('hud-build-road');
 
-  rollBtn?.addEventListener('click', () => gameState.rollDice());
-  nextBtn?.addEventListener('click', () => gameState.endTurn());
+  rollBtn?.addEventListener('click', () => handleAction({ type: 'ROLL_DICE' }));
+  nextBtn?.addEventListener('click', () => handleAction({ type: 'END_TURN' }));
   setBtn?.addEventListener('click', () => gameState.setActionMode('settlement'));
   cityBtn?.addEventListener('click', () => gameState.setActionMode('city'));
   roadBtn?.addEventListener('click', () => gameState.setActionMode('road'));
@@ -702,12 +1011,40 @@ function initCatanGameplay(game: any) {
     const show = (el: HTMLElement | null) => { if (el) { el.style.display = 'inline-block'; el.style.visibility = 'visible'; } };
     const hide = (el: HTMLElement | null) => { if (el) el.style.display = 'none'; };
 
+    const isBotTurn = p.id?.startsWith('bot_');
+
+    // Bot's turn — hide all action buttons, show status
+    if (isBotTurn) {
+      actionEl.textContent = '🤖 düşünüyor...';
+      hide(rollBtn); hide(nextBtn); hide(setBtn); hide(cityBtn); hide(roadBtn);
+      if (gameState.diceValues) {
+        show(diceEl);
+        const total = gameState.diceTotal;
+        diceEl.textContent = `🎲 ${gameState.diceValues[0]}+${gameState.diceValues[1]}=${total}`;
+        diceEl.style.color = total === 7 ? '#ff4444' : '#ffd700';
+      } else {
+        hide(diceEl);
+      }
+      return;
+    }
+
     if (gameState.isSetup) {
       actionEl.textContent = gameState.actionMode === 'settlement' ? '▸ Settlement yerleştir' : '▸ Road yerleştir';
       hide(rollBtn); hide(nextBtn); hide(setBtn); hide(cityBtn); hide(roadBtn); hide(diceEl);
     } else if (gameState.actionMode === 'robber') {
-      actionEl.textContent = '☠ 7 geldi — Robber taşı';
-      hide(rollBtn); hide(nextBtn); hide(diceEl);
+      actionEl.textContent = '☠ 7 geldi — Robber\'ı taşı';
+      hide(rollBtn); hide(nextBtn); hide(setBtn); hide(cityBtn); hide(roadBtn);
+      if (gameState.diceValues) {
+        show(diceEl);
+        diceEl.textContent = `🎲 ${gameState.diceValues[0]}+${gameState.diceValues[1]}=7`;
+        diceEl.style.color = '#ff4444';
+      }
+    } else if (gameState.actionMode === 'steal') {
+      actionEl.textContent = '🗡 Kaynak çalacak oyuncuyu seç';
+      hide(rollBtn); hide(nextBtn); hide(setBtn); hide(cityBtn); hide(roadBtn);
+      show(diceEl);
+      diceEl.textContent = `🎲 7`;
+      diceEl.style.color = '#ff4444';
     } else {
       actionEl.textContent = gameState.actionMode === 'idle' ? '' : `▸ ${gameState.actionMode}`;
       if (!gameState.diceRolled) { show(rollBtn); hide(nextBtn); hide(setBtn); hide(cityBtn); hide(roadBtn); }
@@ -728,6 +1065,8 @@ function initCatanGameplay(game: any) {
   updateMarkers();
   syncRobber();
   updateHUD();
+  // Bot AI only in local mode
+  if (!isMultiplayer) scheduleBotTurn();
 }
 
 } // end initCatan

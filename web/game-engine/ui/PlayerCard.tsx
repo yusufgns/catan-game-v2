@@ -103,15 +103,16 @@ export default function PlayerCard({
             style={{
               fontSize: 14,
               fontWeight: 800,
-              color: "#1a1a2e",
+              color: name ? "#1a1a2e" : "rgba(0,0,0,0.35)",
               overflow: "hidden",
               whiteSpace: "nowrap",
               textOverflow: "ellipsis",
               flex: 1,
               letterSpacing: 0.5,
+              fontStyle: name ? "normal" : "italic",
             }}
           >
-            {name}
+            {name || "Player"}
           </span>
           {isCurrentTurn && (
             <span

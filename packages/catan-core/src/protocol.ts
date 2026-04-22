@@ -10,7 +10,7 @@ export type ClientMessage =
   | { type: "BUY_DEV_CARD" }
   | { type: "PLAY_DEV_CARD"; cardType: DevCardType; payload?: DevCardPayload }
   | { type: "OFFER_TRADE"; offer: Partial<Resources>; want: Partial<Resources>; targetPlayer?: string }
-  | { type: "ACCEPT_TRADE"; tradeId: string }
+  | { type: "ACCEPT_TRADE"; tradeId: string; with?: string }
   | { type: "REJECT_TRADE"; tradeId: string }
   | { type: "MARITIME_TRADE"; give: { resource: ResourceType; amount: number }; want: ResourceType }
   | { type: "MOVE_ROBBER"; hexId: string; stealFrom: string | null }
@@ -31,8 +31,8 @@ export type ServerMessage =
   | { type: "ERROR"; code: string; message: string }
   | { type: "DICE_ROLLED"; values: [number, number]; total: number; playerId: string }
   | { type: "RESOURCES_PRODUCED"; production: Record<string, Partial<Resources>> }
-  | { type: "TRADE_OFFERED"; tradeId: string; from: string; offer: Partial<Resources>; want: Partial<Resources> }
-  | { type: "TRADE_RESOLVED"; tradeId: string; accepted: boolean }
+  | { type: "TRADE_OFFERED"; tradeId: string; from: string; offer: Partial<Resources>; want: Partial<Resources>; targetPlayer?: string }
+  | { type: "TRADE_RESOLVED"; tradeId: string; accepted: boolean; finalizedWith?: string }
   | { type: "ROBBER_MOVED"; hexId: string; stealFrom: string | null; stolenResource?: ResourceType }
   | { type: "BUILDING_PLACED"; playerId: string; buildingType: string; locationId: string }
   | { type: "DEV_CARD_PLAYED"; playerId: string; cardType: DevCardType }

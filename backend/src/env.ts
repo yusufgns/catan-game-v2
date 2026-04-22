@@ -3,7 +3,7 @@ export interface Env {
   GAME_ROOM: DurableObjectNamespace;
   LOBBY_ROOM: DurableObjectNamespace;
 
-  // Secrets (set via wrangler secret put)
+  // Secrets (set via wrangler secret put --env <environment>)
   NEON_DATABASE_URL: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -11,4 +11,5 @@ export interface Env {
 
   // Vars
   FRONTEND_URL: string;
+  ENVIRONMENT: 'development' | 'staging' | 'production';
 }

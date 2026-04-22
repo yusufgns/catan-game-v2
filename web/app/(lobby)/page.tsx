@@ -8,6 +8,7 @@ import {
   Check, X, Hexagon, Circle, Users, Search,
   UserPlus, UserMinus, MessageCircle,
 } from "lucide-react";
+import ActiveGameBanner from "@/components/ActiveGameBanner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -302,7 +303,8 @@ export default function LobbyPage() {
   return (
     <>
       {/* ─── CENTER CONTENT ────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto relative">
+        <ActiveGameBanner />
         <div className="flex flex-col items-center justify-center min-h-full px-8">
 
           {/* Hero title */}

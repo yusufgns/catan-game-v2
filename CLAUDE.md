@@ -32,6 +32,12 @@ catan-v2/
 - Oyun state'i backend'de yaşar, frontend sadece görselleştirir
 - Real-time senkronizasyon için WebSocket kullanılır
 
+## Sistem Dokümanları (`docs/`)
+
+- `docs/trade.md` — Trade sistemi (bank/maritime + domestic), harbor oranları, validasyon, protokol, UI flow
+- `docs/phase-1-foundation.md` … `docs/phase-6-frontend-integration.md` — phase notları
+- `docs/ranked-system.md`, `docs/payment-system.md` — sistem tasarımları
+
 ## Teknoloji Stack
 
 - **Backend**: Go (net/http + gorilla/websocket) veya Node.js (Fastify + ws)

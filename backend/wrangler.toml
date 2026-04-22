@@ -13,10 +13,36 @@ bindings = [
 tag = "v1"
 new_classes = ["GameRoom", "LobbyRoom"]
 
-# Set secrets via: wrangler secret put NEON_DATABASE_URL
-# wrangler secret put GOOGLE_CLIENT_ID
-# wrangler secret put GOOGLE_CLIENT_SECRET
-# wrangler secret put RESEND_API_KEY
+# Set secrets per environment:
+# wrangler secret put NEON_DATABASE_URL --env production
+# wrangler secret put GOOGLE_CLIENT_ID --env production
+# wrangler secret put GOOGLE_CLIENT_SECRET --env production
+# wrangler secret put RESEND_API_KEY --env production
+
+# Crons:
+# - Sundays 3am UTC: orphan guest account cleanup
+# - Every 4 hours: abandoned game / lobby cleanup (phase != 'ended' && stale updatedAt)
+[triggers]
+crons = ["0 3 * * 0", "0 */4 * * *"]
 
 [vars]
 FRONTEND_URL = "http://localhost:3000"
+ENVIRONMENT = "development"
+
+# ── Staging ───────────────────────────────────────────────────────────────────
+[env.staging]
+name = "catan-backend-staging"
+[env.staging.vars]
+FRONTEND_URL = "https://staging.catangame.com"
+ENVIRONMENT = "staging"
+[env.staging.triggers]
+crons = ["0 3 * * 0", "0 */4 * * *"]
+
+# ── Production ────────────────────────────────────────────────────────────────
+[env.production]
+name = "catan-backend-production"
+[env.production.vars]
+FRONTEND_URL = "https://catangame.com"
+ENVIRONMENT = "production"
+[env.production.triggers]
+crons = ["0 3 * * 0", "0 */4 * * *"]

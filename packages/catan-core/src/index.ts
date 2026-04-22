@@ -8,7 +8,8 @@ export type {
 
 export {
   ALL_RESOURCES, EMPTY_RESOURCES, EMPTY_DEV_CARDS,
-  RESOURCE_LABEL, RESOURCE_COLOR,
+  RESOURCE_LABEL, RESOURCE_COLOR, TRADE_TTL_MS,
+  DISCARD_TIMEOUT_MS, DISCARD_THRESHOLD,
 } from './types';
 
 // Hex grid
@@ -31,6 +32,14 @@ export {
 // Harbor utilities
 export { harborIntersectionIds, playerTradeRates } from './harborUtils';
 
+// Trade rules
+export type { TradeError, TradeContext } from './tradeRules';
+export {
+  validateMaritimeTrade, validateOfferTrade,
+  validatePreAcceptTrade, validateFinalizeTrade,
+  tradeSignature,
+} from './tradeRules';
+
 // Dev cards
 export { createDevCardDeck } from './devCards';
 
@@ -48,3 +57,21 @@ export type {
   ClientMessage, ServerMessage, DevCardPayload,
   LobbyClientMessage, LobbyServerMessage, LobbyPlayer,
 } from './protocol';
+
+// Rank
+export type { RankTier, RankInfo, PlacementInfo, PlayerGameResult } from './rank';
+export {
+  getRankFromElo, getPlacementInfo, calculatePlacementElo, RANK_TIERS,
+  computeEloChanges, xpForResult, levelForXp,
+} from './rank';
+
+// Bot
+export type { BotDifficulty, BotConfig, BotStrategy } from './bot/types';
+export { BOT_NAMES, BOT_THINK_DELAY } from './bot/types';
+export {
+  scoreIntersection, evaluatePosition, rankNeededResources,
+  resourceValueMap, shouldBotAcceptTrade,
+} from './bot/evaluate';
+export { easyBot } from './bot/easyBot';
+export { createMediumBot } from './bot/mediumBot';
+export { createHardBot } from './bot/hardBot';

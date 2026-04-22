@@ -175,7 +175,9 @@ Aynı turda birden fazla şey inşa edilebilir. Development card satın alma zar
 ### 6.1 Robber (7 Gelince)
 
 1. 7 gelen turda kaynak üretilmez
-2. **Discard Rule**: 8+ kaynak kartı olan her oyuncu, kartlarının yarısını (aşağı yuvarla) supply'a iade eder
+2. **Discard Rule (zorunlu)**: 8+ kaynak kartı olan her oyuncu, kartlarının yarısını (aşağı yuvarla) supply'a iade eder. Robber **bu işlem tamamlanana dek** taşınamaz.
+   - Implementasyon: `state.discardRequired: { playerId: count }` map'i tutulur. Server `DISCARD_TIMEOUT_MS` (10s) deadline koyar; süre dolarsa `discard_timeout` alarm'ı her bir kalan oyuncu için **rastgele kart** seçip otomatik bağışlar (`autoDiscardForPlayer`). Botlar dice 7 anında zaten otomatik bağışlar.
+   - `handleMoveRobber` `discardRequired` boş değilken `DISCARD_PENDING` hatası fırlatır.
 3. Aktif oyuncu Robber'ı başka bir terrain hex'e taşır (desert dahil, ama mevcut konumu hariç)
 4. Aktif oyuncu, yeni Robber konumuna komşu settlement/city'si olan oyunculardan **1 rastgele kaynak** çalar
 

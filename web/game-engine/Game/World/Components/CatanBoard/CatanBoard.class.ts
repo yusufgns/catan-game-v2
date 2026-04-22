@@ -30,28 +30,28 @@ function hexToWorld(q: number, r: number, size: number): number[] {
   ];
 }
 
-// ─── Colors (bold, saturated — mobile game style) ──────────────────────────────
+// ─── Colors (vibrant, saturated — vivid game style) ──────────────────────────────
 const C = {
-  // Terrain base colors
-  forest:    0x4cb648, pasture:   0x7acc4a, fields:    0xdaa520,
-  hills:     0xd4734a, mountains: 0x8a9aaa, desert:    0xe8c868,
-  ocean:     0x4a98d8,
-  // Hex side wall (darker)
-  forestSide: 0x3a8a38, pastureSide: 0x5aaa38, fieldsSide: 0xb08820,
-  hillsSide:  0xb85a38, mountainsSide: 0x687888, desertSide: 0xc8a848,
-  oceanSide:  0x3878a8,
-  // Decoration
-  trunk:  0x8b6b3c, leaf:   0x2d8a2d, leafDark: 0x1e6b1e,
-  leafRound: 0x3aaa3a, leafRoundDark: 0x288a28,
-  wool:   0xf5f0e8, sheepDark: 0x6a5a4a, sheepSkin: 0xe8d0b8,
-  brick:  0xc84a2a, brickLight: 0xd86040, mortar: 0xe8d4b8,
-  rock:   0x7a8a9a, rockDark: 0x5a6a7a, snow: 0xe8e8f0,
-  sand:   0xe8cc78, fence: 0x9a7a50,
-  wheat:  0xe8b830, wheatDark: 0xc89820,
-  crystal: 0x5588cc,
+  // Terrain base colors — punched up saturation & brightness
+  forest:    0x2da844, pasture:   0x6ec740, fields:    0xe8b820,
+  hills:     0xd86840, mountains: 0x7888a0, desert:    0xf0d870,
+  ocean:     0x3a90d8,
+  // Hex side wall (richer darks)
+  forestSide: 0x1e8030, pastureSide: 0x4a9a28, fieldsSide: 0xc09018,
+  hillsSide:  0xb84828, mountainsSide: 0x586878, desertSide: 0xd0a840,
+  oceanSide:  0x2870a0,
+  // Decoration — more vivid greens, warmer tones
+  trunk:  0x8b5a30, leaf:   0x1e9020, leafDark: 0x107010,
+  leafRound: 0x30b830, leafRoundDark: 0x209820,
+  wool:   0xf8f4f0, sheepDark: 0x6a5040, sheepSkin: 0xf0d8c0,
+  brick:  0xd84428, brickLight: 0xe85840, mortar: 0xf0dcc0,
+  rock:   0x6880a0, rockDark: 0x4a6080, snow: 0xf0f0f8,
+  sand:   0xf0d470, fence: 0xa07840,
+  wheat:  0xf0c020, wheatDark: 0xd8a010,
+  crystal: 0x4488dd,
   wood:   0x7a5a30, woodDark: 0x5a3a1a,
-  frame:  0xc4a868, frameSide: 0xa08848,
-  number: 0xf5ecd0,
+  frame:  0xd4b468, frameSide: 0xb09040,
+  number: 0xf8f0d8,
 };
 
 // Board data imported from game-logic/hexGrid.js as this.boardData

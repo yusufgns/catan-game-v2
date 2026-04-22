@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "tag" text NOT NULL DEFAULT '00000';
+UPDATE "users" SET "tag" = LPAD(FLOOR(RANDOM() * 90000 + 10000)::TEXT, 5, '0') WHERE "tag" = '00000';

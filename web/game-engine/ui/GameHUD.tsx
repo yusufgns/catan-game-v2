@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import PlayerCard from "./PlayerCard";
 import ActionBar from "./ActionBar";
 import ResourceBar from "./ResourceBar";
 import DevCardBar from "./DevCardBar";
 import SideMenu, { LeaveGameDialog, ChatPanel, LogPanel } from "./SideMenu";
+import TurnTimer from "./TurnTimer";
+import TradeDialog, { IncomingTradeBanner, MyOfferPanel } from "./TradeDialog";
+import DiscardDialog from "./DiscardDialog";
+import VictoryOverlay from "./VictoryOverlay";
 import type { GameSnapshot } from "./useGameState";
 
 interface GameHUDProps {
@@ -17,6 +21,11 @@ interface GameHUDProps {
     handleSteal: (targetId: string) => void;
     buyDevCard: () => void;
     reset: () => void;
+    maritimeTrade: (give: { resource: string; amount: number }, want: string) => void;
+    offerTrade: (offer: Record<string, number>, want: Record<string, number>, targetPlayer?: string) => void;
+    acceptTrade: (tradeId: string, withPlayer?: string) => void;
+    rejectTrade: (tradeId: string) => void;
+    discardResources: (resources: Record<string, number>) => void;
   };
   computeVP: (player: any) => number;
 }
@@ -25,14 +34,94 @@ export default function GameHUD({ state, actions, computeVP }: GameHUDProps) {
   const {
     players, currentPlayer, currentPlayerIndex, isSetup,
     actionMode, diceRolled, diceValues, longestRoadHolder, stealTargets,
+    activeTrades, myPlayerId, discardRequired, discardDeadline,
   } = state;
 
   const [chatOpen, setChatOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
 
-  // Placeholder game logs
-  const [gameLogs] = useState<string[]>(() => []);
+  // Trade is allowed for the active player after dice are rolled, not during robber phases.
+  // Multiple offers may coexist; canTrade just gates opening the dialog.
+  const isMyTurn = myPlayerId ? currentPlayer.id === myPlayerId : true;
+  const isRobberPhase = actionMode === "robber" || actionMode === "steal";
+  const canTrade = !isSetup && diceRolled && isMyTurn && !isRobberPhase;
+
+  const myId = myPlayerId ?? currentPlayer.id;
+  const me = players.find(p => p.id === myId) ?? currentPlayer;
+  const opponents = players.filter(p => p.id !== myId);
+
+  // Partition trades: ones I sent (myOpenOffers) vs ones targeting me (incomingTrades)
+  const myOpenOffers = activeTrades.filter(t => t.fromPlayerId === myId);
+  const incomingTrades = activeTrades.filter(t =>
+    t.fromPlayerId !== myId && (t.toPlayerId === undefined || t.toPlayerId === myId)
+  );
+
+  // Game logs — sourced from server in multiplayer, state diff in local
+  const [gameLogs, setGameLogs] = useState<string[]>([]);
+  const prevStateRef = useRef<GameSnapshot | null>(null);
+
+  // Listen for server logs (multiplayer)
+  useEffect(() => {
+    const handler = () => {
+      const logs = (window as any).__catanGameLogs;
+      if (logs) setGameLogs([...logs]);
+    };
+    (window as any).__catanGameLogsUpdated = handler;
+    // Check if logs already exist (reconnect)
+    if ((window as any).__catanGameLogs?.length > 0) handler();
+    return () => { (window as any).__catanGameLogsUpdated = null; };
+  }, []);
+
+  // Fallback: generate logs from state diff (local mode)
+  useEffect(() => {
+    // Skip if server logs are being used
+    if ((window as any).__catanGameLogs?.length > 0) return;
+
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
+    if (!prev || !state) return;
+
+    const logs: string[] = [];
+    const cp = state.currentPlayer;
+    const pp = prev.currentPlayer;
+
+    if (state.diceRolled && !prev.diceRolled && state.diceValues) {
+      const total = state.diceValues[0] + state.diceValues[1];
+      logs.push(`🎲 ${pp?.name || cp?.name} zar attı: ${state.diceValues[0]}+${state.diceValues[1]}=${total}`);
+      if (total === 7) logs.push(`☠️ 7 geldi — Robber hareket etmeli`);
+    }
+
+    if (state.currentPlayerIndex !== prev.currentPlayerIndex && !state.isSetup) {
+      logs.push(`▸ Sıra ${cp?.name}'de`);
+    }
+
+    for (const p of state.players) {
+      const prevP = prev.players.find(pp => pp.id === p.id);
+      if (!prevP) continue;
+      const newSettlements = p.settlements.filter(s => !prevP.settlements.includes(s));
+      for (const s of newSettlements) logs.push(`🏠 ${p.name} settlement yerleştirdi`);
+      const newCities = p.cities.filter(c => !prevP.cities.includes(c));
+      for (const c of newCities) logs.push(`🏰 ${p.name} city yükseltti`);
+      const newRoads = p.roads.filter(r => !prevP.roads.includes(r));
+      if (newRoads.length > 0) logs.push(`🛤️ ${p.name} ${newRoads.length} road yerleştirdi`);
+    }
+
+    if (state.longestRoadHolder !== prev.longestRoadHolder && state.longestRoadHolder) {
+      const holder = state.players.find(p => p.id === state.longestRoadHolder);
+      logs.push(`🏆 ${holder?.name} en uzun yolu aldı!`);
+    }
+
+    if (state.winner && !prev.winner) {
+      const winner = state.players.find(p => p.id === state.winner);
+      logs.push(`👑 ${winner?.name} KAZANDI!`);
+    }
+
+    if (logs.length > 0) {
+      setGameLogs(prev => [...prev, ...logs].slice(-100));
+    }
+  }, [state]);
 
   return (
     <div
@@ -196,13 +285,26 @@ export default function GameHUD({ state, actions, computeVP }: GameHUDProps) {
           </div>
         )}
 
+        {/* Turn timer */}
+        {state.turnDeadline && state.turnTimerMs > 0 && (
+          <TurnTimer
+            deadline={state.turnDeadline}
+            totalMs={state.turnTimerMs}
+            serverTime={state.serverTime}
+            isMyTurn={true}
+          />
+        )}
+
         <ActionBar
           isSetup={isSetup}
           actionMode={actionMode}
           diceRolled={diceRolled}
+          isMyTurn={isMyTurn}
           onRoll={actions.rollDice}
           onEndTurn={actions.endTurn}
           onSetMode={actions.setActionMode}
+          onTrade={() => setTradeDialogOpen(true)}
+          canTrade={canTrade}
           remainingRoads={15 - currentPlayer.roads.length}
           remainingSettlements={5 - currentPlayer.settlements.length}
           remainingCities={4 - currentPlayer.cities.length}
@@ -211,6 +313,106 @@ export default function GameHUD({ state, actions, computeVP }: GameHUDProps) {
           canAffordCity={state.canAffordCity}
         />
       </div>
+
+      {/* ─── Forced discard dialog (7-roll) ────────────────────────── */}
+      {discardRequired[myId] && discardRequired[myId] > 0 && (
+        <div style={{ pointerEvents: "auto" }}>
+          <DiscardDialog
+            required={discardRequired[myId]}
+            resources={me.resources}
+            deadline={discardDeadline}
+            onSubmit={(sel) => actions.discardResources(sel)}
+          />
+        </div>
+      )}
+
+      {/* ─── Other players discarding indicator (top-center small) ─── */}
+      {!discardRequired[myId] && Object.keys(discardRequired).length > 0 && (
+        <div
+          className="absolute top-6 left-1/2 -translate-x-1/2 pointer-events-none"
+          style={{
+            zIndex: 65, padding: "8px 16px", borderRadius: 999,
+            background: "rgba(220,38,38,0.92)", color: "#fff",
+            fontSize: 11, fontWeight: 800, letterSpacing: 0.8,
+            display: "flex", alignItems: "center", gap: 8,
+            fontFamily: "'Inter', system-ui, sans-serif",
+            boxShadow: "0 6px 20px rgba(220,38,38,0.30)",
+          }}
+        >
+          <span>⏱</span>
+          <span>
+            {Object.keys(discardRequired)
+              .map(id => players.find(p => p.id === id)?.name ?? '?')
+              .join(', ')} kart bağışlıyor…
+          </span>
+        </div>
+      )}
+
+      {/* ─── Trade dialog ──────────────────────────────────────────── */}
+      {tradeDialogOpen && (
+        <div style={{ pointerEvents: "auto" }}>
+          <TradeDialog
+            me={me as any}
+            opponents={opponents as any}
+            onClose={() => setTradeDialogOpen(false)}
+            onMaritimeTrade={actions.maritimeTrade}
+            onOfferTrade={actions.offerTrade}
+          />
+        </div>
+      )}
+
+      {/* ─── Trade panels (top-left, stacked) ──────────────────────── */}
+      {(incomingTrades.length > 0 || myOpenOffers.length > 0) && (
+        <div
+          className="absolute top-6 left-6 pointer-events-auto flex flex-col gap-2"
+          style={{ zIndex: 70, maxWidth: 360 }}
+        >
+          {incomingTrades.map(trade => {
+            const from = players.find(p => p.id === trade.fromPlayerId);
+            if (!from) return null;
+            const iPreAccepted = trade.acceptedBy.includes(myId);
+            const canAccept = !iPreAccepted &&
+              Object.entries(trade.want).every(([r, n]) => (me.resources[r] ?? 0) >= n);
+            const acceptedByPlayers = (trade.acceptedBy
+              .map(id => players.find(p => p.id === id))
+              .filter(Boolean) as typeof players)
+              .map(p => ({ name: p.name, color: p.color }));
+            return (
+              <IncomingTradeBanner
+                key={trade.id}
+                fromName={from.name}
+                fromColor={from.color}
+                offer={trade.offer}
+                want={trade.want}
+                expiresAt={trade.expiresAt}
+                canAccept={canAccept}
+                preAccepted={iPreAccepted}
+                acceptedByPlayers={acceptedByPlayers}
+                onAccept={() => actions.acceptTrade(trade.id)}
+                onReject={() => actions.rejectTrade(trade.id)}
+              />
+            );
+          })}
+
+          {myOpenOffers.map(trade => {
+            const acceptors = (trade.acceptedBy
+              .map(id => players.find(p => p.id === id))
+              .filter(Boolean) as typeof players)
+              .map(p => ({ id: p.id, name: p.name, color: p.color }));
+            return (
+              <MyOfferPanel
+                key={trade.id}
+                offer={trade.offer}
+                want={trade.want}
+                expiresAt={trade.expiresAt}
+                acceptors={acceptors}
+                onFinalize={(partnerId) => actions.acceptTrade(trade.id, partnerId)}
+                onCancel={() => actions.rejectTrade(trade.id)}
+              />
+            );
+          })}
+        </div>
+      )}
 
       {/* ─── Leave game dialog ─────────────────────────────────────── */}
       {leaveDialogOpen && (
@@ -226,87 +428,65 @@ export default function GameHUD({ state, actions, computeVP }: GameHUDProps) {
       )}
 
       {/* ─── Winner overlay ───────────────────────────────────────── */}
-      {state.winner && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "rgba(255,255,255,0.4)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            pointerEvents: "auto",
-          }}
-        >
-          <div
-            style={{
-              textAlign: "center",
-              padding: "48px 64px",
-              borderRadius: 20,
-              background: "rgba(255, 255, 255, 0.85)",
-              backdropFilter: "blur(24px)",
-              WebkitBackdropFilter: "blur(24px)",
-              boxShadow: "0 24px 48px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)",
-              border: "1px solid rgba(255,255,255,0.6)",
+      {state.winner && (() => {
+        // Prefer server-computed results (includes ELO/level deltas and
+        // authoritative VP — longestRoad + largestArmy + hidden dev cards).
+        // Otherwise derive rows locally and sort by our best-effort VP.
+        const gr = state.gameResults;
+        const winnerId = typeof state.winner === 'string'
+          ? state.winner
+          : (state.winner?.id ?? gr?.winnerId ?? '');
+        const serverResults = gr?.results;
+        const finalScores = (gr as any)?.finalScores as Record<string, number> | undefined;
+
+        let results: any[];
+        if (serverResults && serverResults.length > 0) {
+          results = serverResults;
+        } else {
+          const withVp = players.map(p => {
+            const vp = finalScores?.[p.id] ?? computeVP(p);
+            return { player: p, vp };
+          });
+          // Winner first, then descending VP among the rest.
+          withVp.sort((a, b) => {
+            if (a.player.id === winnerId) return -1;
+            if (b.player.id === winnerId) return 1;
+            return b.vp - a.vp;
+          });
+          results = withVp.map(({ player, vp }, idx) => ({
+            playerId: player.id,
+            name: player.name,
+            color: player.color,
+            vp,
+            position: idx + 1,
+            isBot: player.id.startsWith('bot_'),
+          }));
+        }
+        return (
+          <VictoryOverlay
+            winnerId={winnerId}
+            results={results}
+            myPlayerId={myPlayerId}
+            onPlayAgain={actions.reset}
+            onExit={() => {
+              // Best-effort: tell the server we're leaving so the banner won't
+              // resurface this game. Fire-and-forget; proceed to home regardless.
+              try {
+                const gameId = new URLSearchParams(window.location.search).get('gameId');
+                if (gameId) {
+                  const API = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787');
+                  fetch(`${API}/user/active-game/${gameId}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    keepalive: true,
+                  }).catch(() => {});
+                }
+              } catch {}
+              window.location.href = '/';
             }}
-          >
-            <div
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                letterSpacing: 4,
-                textTransform: "uppercase",
-                color: "#d97706",
-                marginBottom: 12,
-              }}
-            >
-              Victory
-            </div>
-            <div
-              style={{
-                fontSize: 32,
-                fontWeight: 900,
-                color: "#1a1a2e",
-                letterSpacing: 2,
-                textTransform: "uppercase",
-                marginBottom: 8,
-              }}
-            >
-              {state.winner.name}
-            </div>
-            <div
-              style={{
-                fontSize: 15,
-                color: "rgba(0,0,0,0.4)",
-                marginBottom: 32,
-              }}
-            >
-              reached 10 Victory Points
-            </div>
-            <button
-              onClick={actions.reset}
-              style={{
-                padding: "12px 40px",
-                fontSize: 15,
-                fontWeight: 900,
-                color: "#fff",
-                cursor: "pointer",
-                background: "linear-gradient(145deg, #fbbf24, #d97706)",
-                border: "none",
-                borderRadius: 12,
-                boxShadow: "0 4px 16px rgba(217,119,6,0.3)",
-                letterSpacing: 1,
-                textTransform: "uppercase",
-                minHeight: 48,
-              }}
-            >
-              New Game
-            </button>
-          </div>
-        </div>
-      )}
+          />
+        );
+      })()}
     </div>
   );
 }
