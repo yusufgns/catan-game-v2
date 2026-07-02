@@ -4,6 +4,10 @@ import { BEGINNER_BOARD as BOARD_DATA, HARBORS, hexToPixel, hexCornersArray, HAR
 import { buildBoardGraph, BOARD_HEX_SIZE } from '../../../../game-logic/boardGraph';
 import { createSettlement3D, createCity3D, createRoad3D, createRoadNode3D, createRobber3D } from './CatanPieces';
 import { createShip } from '../../../../models/ship';
+import {
+  ART, TERRAIN_BUILDERS, makeToken3D, makeRng,
+  makeIntersectionRing, makeEdgeGlow, makeHexTargetRing, tagBaseOpacity,
+} from './BoardArt';
 
 /**
  * Catan hex board — thick colorful hex tiles with low-poly decorations.
@@ -30,28 +34,16 @@ function hexToWorld(q: number, r: number, size: number): number[] {
   ];
 }
 
-// ─── Colors (vibrant, saturated — vivid game style) ──────────────────────────────
+// ─── Colors — warm storybook island (see BoardArt.ART for prop colors) ─────────
 const C = {
-  // Terrain base colors — punched up saturation & brightness
-  forest:    0x2da844, pasture:   0x6ec740, fields:    0xe8b820,
-  hills:     0xd86840, mountains: 0x7888a0, desert:    0xf0d870,
+  forest:    ART.forest,    pasture:   ART.pasture,   fields:  ART.fields,
+  hills:     ART.hills,     mountains: ART.mountains, desert:  ART.desert,
   ocean:     0x3a90d8,
-  // Hex side wall (richer darks)
-  forestSide: 0x1e8030, pastureSide: 0x4a9a28, fieldsSide: 0xc09018,
-  hillsSide:  0xb84828, mountainsSide: 0x586878, desertSide: 0xd0a840,
+  forestSide: ART.forestSide, pastureSide: ART.pastureSide, fieldsSide: ART.fieldsSide,
+  hillsSide:  ART.hillsSide,  mountainsSide: ART.mountainsSide, desertSide: ART.desertSide,
   oceanSide:  0x2870a0,
-  // Decoration — more vivid greens, warmer tones
-  trunk:  0x8b5a30, leaf:   0x1e9020, leafDark: 0x107010,
-  leafRound: 0x30b830, leafRoundDark: 0x209820,
-  wool:   0xf8f4f0, sheepDark: 0x6a5040, sheepSkin: 0xf0d8c0,
-  brick:  0xd84428, brickLight: 0xe85840, mortar: 0xf0dcc0,
-  rock:   0x6880a0, rockDark: 0x4a6080, snow: 0xf0f0f8,
-  sand:   0xf0d470, fence: 0xa07840,
-  wheat:  0xf0c020, wheatDark: 0xd8a010,
-  crystal: 0x4488dd,
   wood:   0x7a5a30, woodDark: 0x5a3a1a,
-  frame:  0xd4b468, frameSide: 0xb09040,
-  number: 0xf8f0d8,
+  frame:  ART.sandTop, frameSide: ART.sandSide,
 };
 
 // Board data imported from game-logic/hexGrid.js as this.boardData
@@ -98,13 +90,7 @@ export default class CatanBoard {
     this.dicePosition.position.set(0, 0.5, 0);
     this.group.add(this.dicePosition);
 
-    const dicePlatform = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.45, 0.06, 8),
-      new THREE.MeshStandardMaterial({ color: C.frame, roughness: 0.8 })
-    );
-    dicePlatform.position.set(0, 0.35, 0);
-    dicePlatform.castShadow = true;
-    this.group.add(dicePlatform);
+    // (dice roll onto the board freely — no floating platform)
 
     // Game piece containers
     this.piecesGroup = new THREE.Group();
@@ -138,16 +124,22 @@ export default class CatanBoard {
   }
 
   // ── Thick hex tile (top + side wall) ─────────────────────────────────────
-  _makeHex(topColor: number, sideColor: number, radius: number, height: number) {
+  _makeHex(topColor: number, sideColor: number, radius: number, height: number, tintSeed = 0) {
     const g = new THREE.Group();
     const r = radius, h = height;
 
+    // Per-hex tint jitter so identical terrains don't look copy-pasted
+    const rnd = makeRng(tintSeed * 7919 + 13);
+    const jitter = tintSeed === 0 ? 1 : 0.96 + rnd() * 0.08;
+    const top3 = new THREE.Color(topColor).multiplyScalar(jitter);
+    const side3 = new THREE.Color(sideColor).multiplyScalar(jitter);
+
     // Top face
     const topGeo = new THREE.ExtrudeGeometry(makeHexShape(r), {
-      depth: 0.02, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 2,
+      depth: 0.02, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2,
     });
     const top = new THREE.Mesh(topGeo, new THREE.MeshStandardMaterial({
-      color: topColor, roughness: 0.75, metalness: 0.0,
+      color: top3, roughness: 0.82, metalness: 0.0, flatShading: true,
     }));
     top.rotation.x = -Math.PI / 2;
     top.position.y = h;
@@ -160,7 +152,7 @@ export default class CatanBoard {
       depth: h, bevelEnabled: false,
     });
     const side = new THREE.Mesh(sideGeo, new THREE.MeshStandardMaterial({
-      color: sideColor, roughness: 0.82, metalness: 0.0,
+      color: side3, roughness: 0.85, metalness: 0.0, flatShading: true,
     }));
     side.rotation.x = -Math.PI / 2;
     side.position.y = 0;
@@ -171,312 +163,9 @@ export default class CatanBoard {
     return g;
   }
 
-  // ── Number token (canvas texture disc) ───────────────────────────────────
+  // ── Number token — 3D disc from BoardArt ─────────────────────────────────
   _makeToken(number: number) {
-    const SIZE = 256, cx = SIZE / 2, cy = SIZE / 2, rad = SIZE / 2 - 8;
-    const isHot = number === 6 || number === 8;
-    const c = document.createElement('canvas');
-    c.width = c.height = SIZE;
-    const ctx = c.getContext('2d')!;
-
-    // Background
-    ctx.fillStyle = '#f5ecd0';
-    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
-
-    // Border
-    ctx.strokeStyle = isHot ? '#dc2626' : '#5a3a1a';
-    ctx.lineWidth = 10;
-    ctx.beginPath(); ctx.arc(cx, cy, rad - 5, 0, Math.PI * 2); ctx.stroke();
-
-    // Number — large and bold
-    ctx.fillStyle = isHot ? '#dc2626' : '#2a1a0f';
-    ctx.font = `900 ${String(number).length > 1 ? 110 : 130}px Arial, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(number), cx, cy - 10);
-
-    // Pips
-    const pips = { 2:1, 3:2, 4:3, 5:4, 6:5, 8:5, 9:4, 10:3, 11:2, 12:1 }[number] || 0;
-    const sp = 20, startX = cx - ((pips - 1) * sp) / 2;
-    ctx.fillStyle = isHot ? '#dc2626' : '#2a1a0f';
-    for (let i = 0; i < pips; i++) {
-      ctx.beginPath(); ctx.arc(startX + i * sp, cy + 58, 8, 0, Math.PI * 2); ctx.fill();
-    }
-
-    const tex = new THREE.CanvasTexture(c);
-    const tokenR = 0.30;
-
-    const mesh = new THREE.Mesh(
-      new THREE.CircleGeometry(tokenR, 32),
-      new THREE.MeshStandardMaterial({
-        map: tex,
-        roughness: 0.55,
-        emissive: 0xf5ecd0,
-        emissiveIntensity: 0.15,
-        emissiveMap: tex,
-      })
-    );
-    mesh.rotation.x = -Math.PI / 2;
-    return mesh;
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // ── TERRAIN DECORATIONS (low-poly, bold, chunky) ─────────────────────────
-  // ══════════════════════════════════════════════════════════════════════════
-
-  _addForest(g: THREE.Group, y: number) {
-    const s = this.S;
-    const trunkMat = new THREE.MeshStandardMaterial({ color: C.trunk, roughness: 0.9 });
-    const leafMat1 = new THREE.MeshStandardMaterial({ color: C.leafRound, roughness: 0.8 });
-    const leafMat2 = new THREE.MeshStandardMaterial({ color: C.leafRoundDark, roughness: 0.8 });
-    const woodMat  = new THREE.MeshStandardMaterial({ color: C.wood, roughness: 0.85 });
-
-    // Round-top trees (like the reference image)
-    const trees = [[0.05, 0.1], [-0.45, 0.2], [0.4, -0.2], [-0.2, -0.4], [0.3, 0.35]];
-    trees.forEach(([dx, dz], i) => {
-      const scale = 0.7 + Math.random() * 0.4;
-      const px = dx * s * 0.75, pz = dz * s * 0.75;
-
-      // Trunk
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.03 * s, 0.04 * s, 0.25 * s * scale, 6), trunkMat
-      );
-      trunk.position.set(px, y + 0.125 * s * scale, pz);
-      trunk.castShadow = true;
-      g.add(trunk);
-
-      // Round canopy (sphere, not cone)
-      const canopy = new THREE.Mesh(
-        new THREE.SphereGeometry(0.16 * s * scale, 7, 5), i % 2 === 0 ? leafMat1 : leafMat2
-      );
-      canopy.position.set(px, y + 0.32 * s * scale, pz);
-      canopy.castShadow = true;
-      g.add(canopy);
-    });
-
-    // Log pile
-    const logGeo = new THREE.CylinderGeometry(0.03 * s, 0.03 * s, 0.18 * s, 5);
-    [[-0.3, -0.15, 0], [-0.3, -0.15, 0.06]].forEach(([dx, dz, dy]) => {
-      const log = new THREE.Mesh(logGeo, woodMat);
-      log.position.set(dx * s * 0.7, y + 0.03 * s + dy * s, dz * s * 0.7);
-      log.rotation.z = Math.PI / 2;
-      log.castShadow = true;
-      g.add(log);
-    });
-  }
-
-  _addPasture(g: THREE.Group, y: number) {
-    const s = this.S;
-    const woolMat = new THREE.MeshStandardMaterial({ color: C.wool, roughness: 0.95 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: C.sheepDark, roughness: 0.9 });
-    const skinMat = new THREE.MeshStandardMaterial({ color: C.sheepSkin, roughness: 0.85 });
-    const fenceMat = new THREE.MeshStandardMaterial({ color: C.fence, roughness: 0.88 });
-    const rockMat = new THREE.MeshStandardMaterial({ color: C.rockDark, roughness: 0.8 });
-
-    // Fluffy sheep (2-3)
-    [[-0.15, 0.1], [0.2, -0.25]].forEach(([dx, dz]) => {
-      const px = dx * s * 0.7, pz = dz * s * 0.7;
-      // Body (fluffy sphere)
-      const body = new THREE.Mesh(new THREE.SphereGeometry(0.10 * s, 8, 6), woolMat);
-      body.position.set(px, y + 0.10 * s, pz);
-      body.scale.set(1.2, 0.9, 1.0);
-      body.castShadow = true;
-      g.add(body);
-      // Head
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.05 * s, 6, 4), skinMat);
-      head.position.set(px + 0.10 * s, y + 0.10 * s, pz);
-      g.add(head);
-      // Legs (4 tiny cylinders)
-      [[-0.04, 0.04], [-0.04, -0.04], [0.04, 0.04], [0.04, -0.04]].forEach(([lx, lz]) => {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012 * s, 0.012 * s, 0.07 * s, 4), darkMat);
-        leg.position.set(px + lx * s, y + 0.03 * s, pz + lz * s);
-        g.add(leg);
-      });
-    });
-
-    // Fence sections
-    const postGeo = new THREE.CylinderGeometry(0.015 * s, 0.02 * s, 0.16 * s, 5);
-    const railGeo = new THREE.BoxGeometry(0.30 * s, 0.012 * s, 0.012 * s);
-    [[-0.5, 0.35], [0.4, -0.45]].forEach(([fx, fz]) => {
-      for (let i = 0; i < 3; i++) {
-        const post = new THREE.Mesh(postGeo, fenceMat);
-        post.position.set((fx + i * 0.12) * s * 0.7, y + 0.08 * s, fz * s * 0.7);
-        post.castShadow = true;
-        g.add(post);
-      }
-      const rail = new THREE.Mesh(railGeo, fenceMat);
-      rail.position.set((fx + 0.12) * s * 0.7, y + 0.12 * s, fz * s * 0.7);
-      g.add(rail);
-    });
-
-    // A few rocks
-    [[0.4, 0.2], [-0.35, -0.3]].forEach(([rx, rz]) => {
-      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.06 * s, 0), rockMat);
-      rock.position.set(rx * s * 0.7, y + 0.04 * s, rz * s * 0.7);
-      rock.scale.y = 0.6;
-      rock.castShadow = true;
-      g.add(rock);
-    });
-  }
-
-  _addFields(g: THREE.Group, y: number) {
-    const s = this.S;
-
-    // Premium wheat palette
-    const grainHeadMat = new THREE.MeshStandardMaterial({
-      color: 0xf7e1a3, roughness: 0.65, metalness: 0.0,
-    });
-    const stalkMat = new THREE.MeshStandardMaterial({
-      color: 0xb8a040, roughness: 0.82,
-    });
-    const stalkLightMat = new THREE.MeshStandardMaterial({
-      color: 0xc8b050, roughness: 0.80,
-    });
-
-    // Shared geometries
-    const stalkGeo = new THREE.CylinderGeometry(0.006 * s, 0.010 * s, 1, 5); // unit height, scaled per instance
-    const grainGeo = new THREE.SphereGeometry(0.028 * s, 6, 5);
-
-    // Scatter ~35 wheat stalks randomly within hex radius
-    const count = 35;
-    const maxR = s * 0.55; // stay within hex
-
-    for (let i = 0; i < count; i++) {
-      // Random position within hex (reject if outside hex boundary)
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.sqrt(Math.random()) * maxR; // sqrt for uniform distribution
-      const wx = Math.cos(angle) * dist;
-      const wz = Math.sin(angle) * dist;
-
-      // Random height variation
-      const stalkH = (0.16 + Math.random() * 0.10) * s;
-      const lean = (Math.random() - 0.5) * 0.18; // slight lean
-      const leanX = (Math.random() - 0.5) * 0.10;
-
-      // Stalk
-      const stalk = new THREE.Mesh(stalkGeo, i % 3 === 0 ? stalkLightMat : stalkMat);
-      stalk.scale.y = stalkH;
-      stalk.position.set(wx, y + stalkH * 0.5, wz);
-      stalk.rotation.z = lean;
-      stalk.rotation.x = leanX;
-      stalk.castShadow = true;
-      g.add(stalk);
-
-      // Grain head — plump oval at top of stalk
-      const head = new THREE.Mesh(grainGeo, grainHeadMat);
-      const headY = y + stalkH + 0.01 * s;
-      head.position.set(
-        wx + Math.sin(lean) * stalkH * 0.15,
-        headY,
-        wz + Math.sin(leanX) * stalkH * 0.15
-      );
-      head.scale.set(1.0, 1.6, 1.0); // oval, taller than wide
-      head.castShadow = true;
-      g.add(head);
-    }
-
-    // A few scattered grain on the ground (fallen seeds)
-    const seedMat = new THREE.MeshStandardMaterial({ color: 0xe8c850, roughness: 0.8 });
-    for (let i = 0; i < 5; i++) {
-      const seed = new THREE.Mesh(new THREE.SphereGeometry(0.012 * s, 4, 3), seedMat);
-      seed.position.set(
-        (Math.random() - 0.5) * s * 0.6,
-        y + 0.01 * s,
-        (Math.random() - 0.5) * s * 0.6
-      );
-      seed.scale.set(1, 0.5, 0.8);
-      g.add(seed);
-    }
-  }
-
-  _addHills(g: THREE.Group, y: number) {
-    const s = this.S;
-    const brickMat = new THREE.MeshStandardMaterial({ color: C.brick, roughness: 0.75 });
-    const brickLMat = new THREE.MeshStandardMaterial({ color: C.brickLight, roughness: 0.78 });
-    const mortarMat = new THREE.MeshStandardMaterial({ color: C.mortar, roughness: 0.9 });
-
-    // Brick kiln (dome)
-    const kiln = new THREE.Mesh(new THREE.SphereGeometry(0.14 * s, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), brickMat);
-    kiln.position.set(0.05 * s, y, -0.05 * s);
-    kiln.castShadow = true;
-    g.add(kiln);
-
-    // Kiln chimney
-    const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.03 * s, 0.04 * s, 0.10 * s, 6), brickMat);
-    chimney.position.set(0.05 * s, y + 0.14 * s, -0.05 * s);
-    chimney.castShadow = true;
-    g.add(chimney);
-
-    // Brick stacks
-    const brickGeo = new THREE.BoxGeometry(0.10 * s, 0.035 * s, 0.05 * s);
-    [[-0.35, 0.2, 0], [-0.30, 0.2, 0.04], [-0.32, 0.2, -0.08],
-     [0.30, -0.25, 0], [0.25, -0.25, 0.05], [-0.15, -0.35, 0]].forEach(([bx, bz, by], i) => {
-      const brick = new THREE.Mesh(brickGeo, i % 2 === 0 ? brickMat : brickLMat);
-      brick.position.set(bx * s * 0.7, y + 0.018 * s + (by || 0) * s, bz * s * 0.7);
-      brick.rotation.y = Math.random() * 0.5;
-      brick.castShadow = true;
-      g.add(brick);
-    });
-  }
-
-  _addMountains(g: THREE.Group, y: number) {
-    const s = this.S;
-    const rockMat = new THREE.MeshStandardMaterial({ color: C.rock, roughness: 0.7 });
-    const rockDMat = new THREE.MeshStandardMaterial({ color: C.rockDark, roughness: 0.7 });
-    const snowMat = new THREE.MeshStandardMaterial({ color: C.snow, roughness: 0.5, emissive: 0xddddee, emissiveIntensity: 0.05 });
-
-    // Big peak
-    const peak = new THREE.Mesh(new THREE.ConeGeometry(0.22 * s, 0.50 * s, 6), rockMat);
-    peak.position.set(0, y + 0.25 * s, 0);
-    peak.castShadow = true;
-    g.add(peak);
-
-    // Snow cap
-    const snow = new THREE.Mesh(new THREE.ConeGeometry(0.10 * s, 0.12 * s, 6), snowMat);
-    snow.position.set(0, y + 0.44 * s, 0);
-    g.add(snow);
-
-    // Side rocks
-    [[-0.3, 0.2, 0.3], [0.25, -0.15, 0.25], [-0.15, -0.3, 0.2]].forEach(([dx, dz, h]) => {
-      const rock = new THREE.Mesh(new THREE.ConeGeometry(0.12 * s, h * s, 5), rockDMat);
-      rock.position.set(dx * s * 0.7, y + h * s * 0.5, dz * s * 0.7);
-      rock.rotation.y = Math.random() * Math.PI;
-      rock.castShadow = true;
-      g.add(rock);
-    });
-
-    // Small boulders
-    for (let i = 0; i < 4; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = (0.4 + Math.random() * 0.2) * s * 0.7;
-      const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(0.05 * s, 0), rockDMat);
-      boulder.position.set(Math.cos(angle) * dist, y + 0.03 * s, Math.sin(angle) * dist);
-      boulder.scale.y = 0.6;
-      g.add(boulder);
-    }
-  }
-
-  _addDesert(g: THREE.Group, y: number) {
-    const s = this.S;
-    const sandMat = new THREE.MeshStandardMaterial({ color: C.sand, roughness: 0.85 });
-    const cactusMat = new THREE.MeshStandardMaterial({ color: 0x4a8a3a, roughness: 0.8 });
-
-    // Sand dunes
-    [[-0.2, 0.15, 0.22], [0.2, -0.15, 0.18], [0.0, 0.0, 0.25]].forEach(([dx, dz, r]) => {
-      const dune = new THREE.Mesh(new THREE.SphereGeometry(r * s, 7, 4), sandMat);
-      dune.position.set(dx * s * 0.7, y + 0.02, dz * s * 0.7);
-      dune.scale.set(1.3, 0.2, 1.1);
-      g.add(dune);
-    });
-
-    // Cactus
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.025 * s, 0.03 * s, 0.22 * s, 6), cactusMat);
-    trunk.position.set(0.25 * s * 0.7, y + 0.11 * s, 0.2 * s * 0.7);
-    trunk.castShadow = true;
-    g.add(trunk);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.018 * s, 0.02 * s, 0.10 * s, 5), cactusMat);
-    arm.position.set(0.25 * s * 0.7 + 0.04 * s, y + 0.15 * s, 0.2 * s * 0.7);
-    arm.rotation.z = Math.PI / 3;
-    g.add(arm);
+    return makeToken3D(number);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -515,43 +204,42 @@ export default class CatanBoard {
     });
 
     // ── Land terrain hexes (on top of base, only 0.05 above) ─────────────
-    this.boardData.forEach((hex) => {
+    this.boardData.forEach((hex, hexIdx) => {
       const [x, , z] = hexToWorld(hex.q, hex.r, s);
 
       const topC = C[hex.type] || C.desert;
       const sideC = C[hex.type + 'Side'] || C.desertSide;
 
-      const tile = this._makeHex(topC, sideC, tileR, tileH);
+      // Deterministic per-hex seed (stable across rebuilds)
+      const seed = (hex.q * 73856093) ^ (hex.r * 19349663) ^ (hexIdx + 1);
+      const rnd = makeRng(seed);
+
+      const tile = this._makeHex(topC, sideC, tileR, tileH, seed);
       tile.position.set(x, tileY, z);
 
       // Tag all meshes in tile with hexKey for raycaster robber click
       const hexKey = `${hex.q},${hex.r}`;
       tile.traverse((child: any) => { if (child.isMesh) child.userData.hexKey = hexKey; });
 
-      const rot = Math.floor(Math.random() * 6) * (Math.PI / 3);
+      const rot = Math.floor(rnd() * 6) * (Math.PI / 3);
       tile.rotation.y = rot;
       this.group.add(tile);
 
-      // Terrain decorations
+      // Terrain decorations — from-scratch BoardArt builders.
+      // Deco group is NOT rotated: builders bias props away from the token
+      // zone (+z, toward camera), rotation would break that.
       const decoY = tileH + 0.02;
       const decoGroup = new THREE.Group();
-      decoGroup.rotation.y = rot;
       decoGroup.position.set(x, tileY, z);
 
-      switch (hex.type) {
-        case 'forest':    this._addForest(decoGroup, decoY);    break;
-        case 'pasture':   this._addPasture(decoGroup, decoY);   break;
-        case 'fields':    this._addFields(decoGroup, decoY);    break;
-        case 'hills':     this._addHills(decoGroup, decoY);     break;
-        case 'mountains': this._addMountains(decoGroup, decoY); break;
-        case 'desert':    this._addDesert(decoGroup, decoY);    break;
-      }
+      const build = TERRAIN_BUILDERS[hex.type];
+      if (build) build(decoGroup, decoY, s, seed);
       this.group.add(decoGroup);
 
-      // Number token — positioned at bottom of hex (toward camera, +z direction)
+      // Number token — sits ON the tile near the camera-facing edge
       if (hex.number != null) {
         const token = this._makeToken(hex.number);
-        token.position.set(x, tileY + tileH + 0.08, z + tileR * 0.75);
+        token.position.set(x, tileY + tileH + 0.02, z + tileR * 0.68);
         this.group.add(token);
       }
     });
@@ -710,7 +398,7 @@ export default class CatanBoard {
     return sprite;
   }
 
-  // ── Intersection markers (ghost silhouette settlement/city models)
+  // ── Intersection markers — golden pulse ring + ghost piece on hover ─────
   _buildIntersectionMarkers() {
     this.intersectionMeshes = new Map();
 
@@ -720,22 +408,29 @@ export default class CatanBoard {
       const group = new THREE.Group();
       group.position.set(x, y + this.nodeTopOffset, z);
 
-      // Create both settlement and city ghosts, toggle visibility as needed
+      // Glow ring — the always-visible "you can build here" cue
+      const ring = makeIntersectionRing();
+      group.add(ring);
+
+      // Ghost pieces — only readable on hover (ghostOnly flag keeps them
+      // faint in the resting state so the board stays clean)
       const settlement = createSettlement3D('#ffffff', this.pieceScale);
-      this._applyGhostMat(settlement);
+      this._applyGhostMat(settlement, 0.55);
       settlement.name = 'ghost-settlement';
       group.add(settlement);
 
       const city = createCity3D('#ffffff', this.pieceScale * 0.85);
-      this._applyGhostMat(city);
+      this._applyGhostMat(city, 0.55);
       city.name = 'ghost-city';
       city.visible = false;
       group.add(city);
 
+      tagBaseOpacity(group);
+
       group.userData = {
         type: 'intersection', id,
-        defaultOpacity: 0.35,
-        hoverOpacity: 0.7,
+        defaultOpacity: 0.55,
+        hoverOpacity: 1.0,
         isHovered: false,
         ghostType: 'settlement',
       };
@@ -746,21 +441,22 @@ export default class CatanBoard {
   }
 
   /** Apply ghost (silhouette) material to all meshes in a 3D object */
-  _applyGhostMat(obj: THREE.Object3D) {
+  _applyGhostMat(obj: THREE.Object3D, baseOpacity = 0.35) {
     const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.35,
-      roughness: 0.6, metalness: 0.0,
-      emissive: 0xffffff, emissiveIntensity: 0.2,
+      color: 0xfff2cc, transparent: true, opacity: baseOpacity,
+      roughness: 0.6, metalness: 0.0, depthWrite: false,
+      emissive: 0xffd76a, emissiveIntensity: 0.35,
     });
     obj.traverse((child: any) => {
       if (child.isMesh) {
         child.material = mat.clone();
+        child.material.opacity = baseOpacity;
         child.castShadow = false;
       }
     });
   }
 
-  // ── Edge markers (ghost silhouette road models) ─────────────────────────
+  // ── Edge markers — golden glow bar + ghost road on hover ────────────────
   _buildEdgeMarkers() {
     this.edgeMeshes = new Map();
 
@@ -772,18 +468,23 @@ export default class CatanBoard {
       const { pos, rotY } = this.edgeTo3D(intA.x, intA.y, intB.x, intB.y);
 
       const RS = this.pieceScale;
-      const road = createRoad3D('#ffffff', 3.15, [RS + 0.02, RS, RS]);
-      this._applyGhostMat(road);
-
       const group = new THREE.Group();
       group.position.set(pos[0], pos[1], pos[2]);
       group.rotation.y = rotY;
+
+      const glow = makeEdgeGlow(3.15 * RS);
+      group.add(glow);
+
+      const road = createRoad3D('#ffffff', 3.15, [RS + 0.02, RS, RS]);
+      this._applyGhostMat(road, 0.5);
       group.add(road);
+
+      tagBaseOpacity(group);
 
       group.userData = {
         type: 'edge', id,
-        defaultOpacity: 0.35,
-        hoverOpacity: 0.7,
+        defaultOpacity: 0.55,
+        hoverOpacity: 1.0,
       };
       group.visible = false;
       this.markersGroup.add(group);
@@ -791,11 +492,17 @@ export default class CatanBoard {
     }
   }
 
-  /** Set opacity on all meshes within a marker group */
+  /**
+   * Sweep marker opacity. `opacity` acts as a 0..1 factor against each
+   * mesh's tagged baseOpacity, so rings stay bright while ghosts stay soft.
+   * Invisible hit volumes (userData.isHitArea) are skipped.
+   */
   _setMarkerOpacity(group: any, opacity: number) {
-    group.traverse((child) => {
-      if (child.isMesh && child.material) {
-        child.material.opacity = opacity;
+    const factor = Math.max(0, Math.min(1, opacity));
+    group.traverse((child: any) => {
+      if (child.isMesh && child.material && !child.userData.isHitArea) {
+        const base = child.userData.baseOpacity ?? 1;
+        child.material.opacity = base * factor;
       }
     });
   }
@@ -833,37 +540,18 @@ export default class CatanBoard {
     }
   }
 
-  // ── Hex markers (robber placement — floating circles on each hex) ──────
+  // ── Hex markers (robber placement — red target rings) ───────────────────
   _buildHexMarkers() {
     this.hexMarkers = new Map();
-
-    const ringGeo = new THREE.TorusGeometry(0.32, 0.04, 16, 32);
-    const diskGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.01, 32);
-
-    const ringMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.0, roughness: 0.3, metalness: 0.2,
-      emissive: 0xffffff, emissiveIntensity: 0.5,
-    });
-    const diskMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, transparent: true, opacity: 0.0, roughness: 0.5, metalness: 0.0,
-    });
 
     for (const hex of this.boardData) {
       if (hex.type === 'ocean') continue;
       const hexKey = `${hex.q},${hex.r}`;
       const [x, , z] = hexToWorld(hex.q, hex.r, this.S);
 
-      const group = new THREE.Group();
+      const group = makeHexTargetRing();
       group.position.set(x - this.S * 0.92 * 0.65, 0.3, z); // same offset as robber
-
-      // Outer ring
-      const ring = new THREE.Mesh(ringGeo, ringMat.clone());
-      ring.rotation.x = -Math.PI / 2;
-      group.add(ring);
-
-      // Inner fill
-      const disk = new THREE.Mesh(diskGeo, diskMat.clone());
-      group.add(disk);
+      tagBaseOpacity(group);
 
       group.userData = {
         type: 'hexMarker', id: hexKey,

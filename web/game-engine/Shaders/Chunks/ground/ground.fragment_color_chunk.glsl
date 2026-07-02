@@ -27,11 +27,15 @@ float edgeSoftness = smoothstep(0.0, 1.0, edgeStrength);
 
 waterMask = mix(waterMask, waterMask * (1.0 - edgeSoftness * 0.7), min(edgeStrength, 1.0));
 
-vec2 waterCenter = vec2(0.53, 0.535);
+vec2 waterCenter = vec2(0.5, 0.5);
 float distFromCenter = length(vUv - waterCenter);
 
-float depthGradient = 1.0 - smoothstep(0.0, 0.3, distFromCenter);
+// Tropical island falloff: turquoise shallows hug the island (center),
+// deepening to rich blue open water. Perlin breaks up the banding.
+float depthGradient = smoothstep(0.05, 0.23, distFromCenter);
 depthGradient = pow(depthGradient, uWaterDepthIntensity);
+depthGradient += (perlinNoise.g - 0.5) * 0.12 * (1.0 - depthGradient);
+depthGradient = clamp(depthGradient, 0.0, 1.0);
 
 vec3 waterColor = mix(uWaterShallow, uWaterDeep, depthGradient);
 

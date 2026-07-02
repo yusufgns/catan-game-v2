@@ -19,7 +19,7 @@ const TIERS: { tier: RankTier; label: string; min: number; max: number; color: s
   { tier: 'platinum',     label: 'Platinum',     min: 1700, max: 1999, color: '#00CED1' },
   { tier: 'diamond',      label: 'Diamond',      min: 2000, max: 2299, color: '#B9F2FF' },
   { tier: 'master',       label: 'Master',       min: 2300, max: 2599, color: '#9B59B6' },
-  { tier: 'grandmaster',  label: 'Grandmaster',  min: 2600, max: 9999, color: '#FF4500' },
+  { tier: 'grandmaster',  label: 'Grandmaster',  min: 2600, max: Infinity, color: '#FF4500' },
 ];
 
 const DIVISION_LABELS = ['I', 'II', 'III', 'IV'];

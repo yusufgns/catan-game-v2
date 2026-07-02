@@ -4,105 +4,81 @@
 
 Tüm oyun kuralları ve mekaniği için: `../.claude/catan-rules.md`
 
-UI bileşenlerini ve etkileşimleri implementarken bu dosyayı referans al.
+UI bileşenlerini ve etkileşimleri implemente ederken bu dosyayı referans al. Saf kural mantığı `@catan/core` paketinde (`../packages/catan-core`) — tipler ve validasyonlar oradan import edilir.
+
+> **ÖNEMLİ**: Bu proje Next.js 16 kullanıyor — training data'dan sapmalar var. Framework davranışından emin değilsen `node_modules/next/dist/docs/` altındaki dokümanlara bak (bkz. `AGENTS.md`).
 
 ---
 
 ## Teknoloji Stack
 
-- **Framework**: React 18 + TypeScript
-- **Build Tool**: Vite
-- **State Yönetimi**: Zustand
-- **Styling**: Tailwind CSS
-- **Board Rendering**: SVG (hexagonal grid) veya Canvas API
-- **WebSocket**: native WebSocket API veya socket.io-client
-- **Animasyonlar**: Framer Motion
-- **UI Components**: Radix UI (accessible primitives)
+- **Framework**: Next.js 16 (App Router) + React 19 + TypeScript
+- **3D**: Vanilla Three.js (el yazması motor, Bruno Simon tarzı class mimarisi) — `@react-three/fiber`/`drei` kurulu ama ana motor r3f DEĞİL
+- **State Yönetimi**: Zustand (`lib/gameStore.ts`, `lib/lobbyStore.ts`)
+- **Styling**: Tailwind CSS v4 (lobby/UI) + SCSS (game engine: `game-engine/catan.scss`)
+- **WebSocket**: native WebSocket (`lib/useWebSocket.ts`), server-authoritative sync
+- **Animasyonlar**: GSAP (3D motor içi), Framer Motion (lobby/UI)
+- **Diğer**: lucide-react (ikonlar), mersennetwister (seeded RNG), lil-gui + three-perf (debug), raw-loader (GLSL import)
+- **Backend API**: `NEXT_PUBLIC_API_URL` (default `http://localhost:8787`)
 
 ## Proje Yapısı
 
 ```
 web/
-├── src/
-│   ├── components/
-│   │   ├── board/
-│   │   │   ├── HexBoard.tsx         ← Ana tahta bileşeni (SVG/Canvas)
-│   │   │   ├── HexTile.tsx          ← Tek terrain hex
-│   │   │   ├── NumberToken.tsx      ← Sayı token (pip gösterimi dahil)
-│   │   │   ├── Settlement.tsx       ← Settlement/City render
-│   │   │   ├── Road.tsx             ← Road render
-│   │   │   ├── Robber.tsx           ← Robber figürü
-│   │   │   └── Harbor.tsx           ← Harbor marker
-│   │   ├── ui/
-│   │   │   ├── ResourceCard.tsx     ← Kaynak kartı
-│   │   │   ├── DevCard.tsx          ← Development kartı
-│   │   │   ├── PlayerPanel.tsx      ← Oyuncu bilgi paneli
-│   │   │   ├── DiceRoll.tsx         ← Zar atma animasyonu
-│   │   │   ├── TradeDialog.tsx      ← Ticaret diyalogu
-│   │   │   ├── BuildMenu.tsx        ← İnşaat menüsü
-│   │   │   └── VictoryScreen.tsx    ← Kazanma ekranı
-│   │   └── lobby/
-│   │       ├── LobbyCreate.tsx
-│   │       └── LobbyJoin.tsx
-│   ├── store/
-│   │   ├── gameStore.ts            ← Zustand game state
-│   │   ├── wsStore.ts              ← WebSocket connection store
-│   │   └── uiStore.ts              ← UI state (selected hex, modal, vb)
-│   ├── hooks/
-│   │   ├── useWebSocket.ts         ← WS bağlantı yönetimi
-│   │   ├── useGameActions.ts       ← Action dispatcher'lar
-│   │   └── useBoardGeometry.ts     ← Hex koordinat hesaplamaları
-│   ├── lib/
-│   │   ├── hexGrid.ts              ← Hexagonal grid math
-│   │   ├── boardSetup.ts           ← Başlangıç tahta konfigürasyonu
-│   │   └── constants.ts            ← Renk paleti, ölçüler, vb.
-│   ├── types/
-│   │   └── game.ts                 ← TypeScript type definitions (GameState, Player, vb.)
-│   └── pages/
-│       ├── Home.tsx
-│       ├── Lobby.tsx
-│       └── Game.tsx
-├── index.html
-├── vite.config.ts
-├── tailwind.config.ts
-└── tsconfig.json
+├── app/
+│   ├── (lobby)/                    ← Lobby shell (layout.tsx = nav)
+│   │   ├── page.tsx                ← Ana sayfa (oyun modları, quick play)
+│   │   ├── shop/ leaderboard/ daily/ profile/ inventory/
+│   │   ├── news/ + news/[slug]/
+│   │   ├── login/
+│   │   └── catan-2d/               ← 2D board varyantı (fallback)
+│   ├── (game)/
+│   │   ├── room/                   ← Pre-game oda (ready, renk, bot ekleme)
+│   │   └── play/                   ← 3D oyun: page.tsx → CatanView.tsx (motoru mount eder)
+│   ├── auth/verify/                ← Magic link doğrulama landing
+│   └── layout.tsx
+├── components/
+│   ├── AuthGuard, AuthProvider, ActiveGameBanner, InviteFriendsDialog
+│   ├── board/                      ← 2D varyant bileşenleri (HexBoard, HexTile, ...)
+│   ├── board3d/                    ← r3f tabanlı 3D parçalar (Settlement3D, Road3D, ...)
+│   └── ui/                         ← TradeDialog, LogCard
+├── game-engine/                    ← ANA 3D MOTOR (vanilla Three.js)
+│   ├── catan.ts                    ← initCatan() entry + modül singleton'ları
+│   │                                 (getGameState, getGameRef, getMultiplayerRef, destroyCatan)
+│   ├── multiplayer.ts              ← WS adapter: createMultiplayerAdapter, syncServerStateToLocal
+│   ├── Game/
+│   │   ├── CatanGame.class.ts      ← Orkestratör
+│   │   ├── Core/                   ← Renderer, Camera
+│   │   ├── Utils/                  ← EventEmitter, Time, Sizes, ResourceLoader, Audio*, Debug
+│   │   └── World/                  ← CatanWorld + Managers (Season, Environment/day-night, Biome)
+│   │       └── Components/         ← Ground, Skydome, Rain, Snow, FireFlies, ... +
+│   │           └── CatanBoard/     ← CatanBoard.class, CatanPieces, CatanGameState
+│   ├── models/                     ← Prosedürel geometri (hexForest, settlement, city, road, ...)
+│   ├── Shaders/                    ← Custom GLSL (Materials/ + Chunks/)
+│   ├── game-logic/                 ← ⚠️ core'un kopyası — yeni kod @catan/core kullanmalı
+│   └── ui/                         ← React HUD overlay: GameHUD, TradeDialog, ActionBar,
+│                                     DiscardDialog, VictoryOverlay, TurnTimer, useGameState hook
+├── lib/                            ← gameStore/lobbyStore (Zustand), useWebSocket, auth, tabId
+│                                     (⚠️ bir kısım kural kopyası burada da var — @catan/core'u tercih et)
+├── types/ public/
+└── AGENTS.md                       ← Next.js 16 uyarısı
 ```
 
----
+## Motor ↔ React Entegrasyonu
 
-## Hex Grid Matematiği
+- Motor client-side dynamic import ile `<canvas id="three">` içine mount edilir (`CatanView.tsx`)
+- React HUD (`game-engine/ui/`) canvas üzerine overlay; `useGameState` hook'u motor singleton'ını dinler
+- `CatanGameState` listener pattern'iyle değişiklik yayar; bazı köprüler `window.__catan*` callback'leri üzerinden (session-replaced / replaced-by-bot dialogları) — teknik borç, genişletme yaparken tercih etme
+- `?mode=ranked|classic` URL paramı board üretimini belirler (`generateRandomBoard` vs `BEGINNER_BOARD`)
 
-Hexagonal grid için `lib/hexGrid.ts` kullanılır:
+## WebSocket Entegrasyonu
 
-```typescript
-// Axial koordinatlardan pixel pozisyonu (pointy-top hex)
-function hexToPixel(q: number, r: number, size: number): { x: number; y: number } {
-  return {
-    x: size * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r),
-    y: size * (3 / 2 * r)
-  }
-}
+- Mesaj kontratı: `packages/catan-core/src/protocol.ts` (tek kaynak)
+- `lib/useWebSocket.ts`: auto-reconnect + backoff; `game-engine/multiplayer.ts`: server state → lokal motor sync
+- **Game state sadece sunucudan güncellenir**; client'ta unilateral state mutation yapma
+- Kural validasyonu backend'de; client'ta sadece UX yardımı (hangi aksiyonlar mevcut, highlight'lar)
 
-// Intersection (corner) pozisyonları — her hex'in 6 corner'ı
-function hexCorners(cx: number, cy: number, size: number): Point[] {
-  return Array.from({ length: 6 }, (_, i) => {
-    const angle = Math.PI / 180 * (60 * i - 30) // pointy-top
-    return { x: cx + size * Math.cos(angle), y: cy + size * Math.sin(angle) }
-  })
-}
-```
-
-## Board Render Yaklaşımı
-
-### SVG Önerilen
-
-- Her hex bir `<polygon>` veya `<path>`
-- Intersection'lar click target olarak `<circle>` (hover için büyür)
-- Edge'ler click target olarak `<line>` veya `<rect>`
-- Terrain için CSS class veya gradient fill
-- Tüm board tek `<svg>` içinde, viewBox ile responsive
-
-### Interaksiyon State'leri
+## Interaksiyon State'leri (UI phase)
 
 ```typescript
 type UIPhase =
@@ -116,46 +92,8 @@ type UIPhase =
   | "stealing"              // robber sonrası
 ```
 
-- Aktif intersection'lar highlight edilir (yeşil)
-- Geçersiz konumlar disabled (kırmızı/gri)
+- Aktif intersection'lar highlight edilir, geçersiz konumlar disabled
 - Hover tooltip ile bilgi göster
-
----
-
-## State Yönetimi (Zustand)
-
-```typescript
-// store/gameStore.ts
-interface GameStore {
-  gameState: GameState | null
-  myPlayerId: string | null
-
-  // Actions (WS mesajlarından state güncelleme)
-  applyGameState: (state: GameState) => void
-  applyDiceRoll: (values: [number, number]) => void
-  applyResourceUpdate: (production: Record<string, Resources>) => void
-
-  // Selectors
-  myPlayer: () => Player | null
-  isMyTurn: () => boolean
-  canBuild: (type: BuildingType) => boolean
-}
-```
-
----
-
-## WebSocket Entegrasyonu
-
-```typescript
-// hooks/useWebSocket.ts
-// Bağlantı kesilince auto-reconnect
-// Gelen mesajları parse edip store'u güncelle
-// Outgoing action'lar için sendAction() fonksiyonu
-```
-
-Mesaj protokolü için backend'in CLAUDE.md dosyasına bak.
-
----
 
 ## Tasarım Sistemi
 
@@ -189,13 +127,18 @@ const TERRAIN_COLORS = {
 - 6 ve 8: kırmızı text (`#DC2626`)
 - Diğerleri: koyu kahverengi (`#78350f`)
 
----
+## Komutlar
+
+```bash
+pnpm dev     # next dev (localhost:3000)
+pnpm build   # next build
+pnpm lint    # eslint
+```
 
 ## Geliştirme Notları
 
-- Board geometry hesaplamalarını component'a gömme, `lib/hexGrid.ts`'de tut
-- Game state sadece WebSocket'ten güncellenir; client'ta unilateral state mutation yapma
-- Kural validasyonu backend'de; client'ta sadece UX yardımı (hangi aksiyonların mevcut olduğunu göster)
-- Accessibility: keyboard navigation için intersection'lar `tabIndex` almalı
-- Mobile responsive: touch event'leri destekle (tap to select, tap to place)
-- Oyun anımlarında (zar, kaynak kazanma, robber hareketi) Framer Motion kullan
+- Hex/board geometri hesapları `@catan/core` (`hexGrid.ts`, `boardGraph.ts`) — component'a gömme
+- `lib/` ve `game-engine/game-logic/` altındaki kural kopyaları legacy; yeni kod `@catan/core` import etmeli
+- Game UI tasarımı için `web/.claude/skills/game-ui-design` skill'i mevcut
+- Mobile responsive: touch event'leri destekle; accessibility için klavye navigasyonu
+- Zar/kaynak/robber animasyonları: HUD'da Framer Motion, sahnede GSAP

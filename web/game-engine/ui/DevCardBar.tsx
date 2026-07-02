@@ -101,25 +101,25 @@ export default function DevCardBar({ devCards, canBuy, deckSize, onBuy }: DevCar
           padding: "10px 0",
           borderRadius: 10,
           background: canBuy
-            ? "rgba(255, 255, 255, 0.75)"
-            : "rgba(255, 255, 255, 0.45)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
+            ? "rgba(24, 30, 46, 0.9)"
+            : "rgba(17, 22, 36, 0.6)",
+          backdropFilter: "blur(18px)",
+          WebkitBackdropFilter: "blur(18px)",
           border: canBuy
-            ? "1.5px solid rgba(34,197,94,0.4)"
-            : "1.5px dashed rgba(0,0,0,0.12)",
+            ? "1.5px solid rgba(74,222,128,0.5)"
+            : "1.5px dashed rgba(255,255,255,0.18)",
           cursor: canBuy ? "pointer" : "default",
           opacity: canBuy ? 1 : 0.6,
           transition: "all 0.15s ease",
         }}
       >
-        <Plus size={18} style={{ color: canBuy ? "#15803d" : "rgba(0,0,0,0.2)" }} />
+        <Plus size={18} style={{ color: canBuy ? "#4ade80" : "rgba(255,255,255,0.3)" }} />
         <span
           style={{
-            fontSize: 8,
+            fontSize: 9,
             fontWeight: 800,
             letterSpacing: 0.5,
-            color: canBuy ? "#15803d" : "rgba(0,0,0,0.25)",
+            color: canBuy ? "#4ade80" : "rgba(255,255,255,0.35)",
             textTransform: "uppercase",
             textAlign: "center",
             lineHeight: 1.3,

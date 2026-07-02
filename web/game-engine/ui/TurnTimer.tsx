@@ -46,9 +46,9 @@ export default function TurnTimer({ deadline, totalMs, serverTime, isMyTurn }: T
       gap: 8,
       padding: "6px 12px",
       borderRadius: 10,
-      background: isMyTurn ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.5)",
+      background: isMyTurn ? "rgba(24, 30, 46, 0.9)" : "rgba(17, 22, 36, 0.7)",
       backdropFilter: "blur(12px)",
-      border: `1.5px solid ${isMyTurn ? color : "rgba(0,0,0,0.06)"}`,
+      border: `1.5px solid ${isMyTurn ? color : "rgba(255,255,255,0.12)"}`,
       boxShadow: isMyTurn ? `0 2px 8px ${color}30` : "none",
       transition: "all 0.3s ease",
       animation: isPulsing ? "timerPulse 1s ease-in-out infinite" : "none",
@@ -59,7 +59,7 @@ export default function TurnTimer({ deadline, totalMs, serverTime, isMyTurn }: T
         flex: 1,
         height: 4,
         borderRadius: 2,
-        background: "rgba(0,0,0,0.08)",
+        background: "rgba(255,255,255,0.14)",
         overflow: "hidden",
       }}>
         <div style={{
@@ -76,7 +76,7 @@ export default function TurnTimer({ deadline, totalMs, serverTime, isMyTurn }: T
         fontSize: 13,
         fontWeight: 800,
         fontVariantNumeric: "tabular-nums",
-        color: isMyTurn ? color : "rgba(0,0,0,0.35)",
+        color: isMyTurn ? color : "rgba(255,255,255,0.4)",
         minWidth: 28,
         textAlign: "right",
       }}>

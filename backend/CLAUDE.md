@@ -2,126 +2,110 @@
 
 ## Oyun Kuralları
 
-Tüm oyun kuralları ve mekaniği için: `../. claude/catan-rules.md`
+Tüm oyun kuralları ve mekaniği için: `../.claude/catan-rules.md`
 
-Bu dosyayı her zaman game logic yazarken referans al.
+Bu dosyayı her zaman game logic yazarken referans al. Saf kural/validasyon/ELO mantığı `@catan/core` paketinde yaşar (`../packages/catan-core`) — backend bu paketi tüketir, kural mantığını burada duplike etme.
 
 ---
 
 ## Teknoloji Stack
 
-- **Runtime**: Go 1.22+ (önerilen) veya Node.js 20+
-- **HTTP Framework**: Go net/http + chi router / Node: Fastify
-- **WebSocket**: gorilla/websocket (Go) / ws (Node)
-- **Store**: In-memory (başlangıç), Redis (ölçekleme için)
-- **Serialization**: JSON
+- **Runtime**: Cloudflare Workers (nodejs_compat, ESM)
+- **HTTP Framework**: Hono ^4
+- **Real-time**: Cloudflare Durable Objects + native WebSocket (`ctx.acceptWebSocket`)
+- **Database**: Neon serverless Postgres + Drizzle ORM (migration'lar drizzle-kit ile)
+- **Auth**: arctic (Google OAuth PKCE), oslo (hash/crypto), Resend (magic link e-postası), session cookie
+- **Shared logic**: `@catan/core` (workspace paketi)
+- **Config**: `wrangler.toml` (DO binding'leri, staging/production env'leri, cron trigger'lar), secrets `.dev.vars`
 
-## Proje Yapısı (Go)
+## Proje Yapısı
 
 ```
 backend/
-├── cmd/
-│   └── server/
-│       └── main.go
-├── internal/
-│   ├── game/
-│   │   ├── state.go        ← GameState, Player, Board struct'ları
-│   │   ├── board.go        ← Hex grid, intersection, edge logic
-│   │   ├── rules.go        ← Kural validasyonları (distance rule, road connect vb)
-│   │   ├── engine.go       ← Turn yönetimi, action handler'lar
-│   │   ├── resource.go     ← Kaynak üretimi, banka işlemleri
-│   │   ├── trade.go        ← Domestic & maritime trade
-│   │   ├── robber.go       ← Robber & 7 logic
-│   │   └── victory.go      ← VP hesaplama, longest road, largest army
-│   ├── lobby/
-│   │   ├── lobby.go        ← Oyun odası yönetimi
-│   │   └── matchmaking.go
-│   └── ws/
-│       ├── hub.go          ← WebSocket connection hub
-│       ├── client.go       ← Player connection
-│       └── messages.go     ← Message types (JSON protocol)
-├── go.mod
-└── go.sum
+├── src/
+│   ├── index.ts                    ← Worker entry: Hono app + WS upgrade routes + cron dispatcher
+│   ├── env.ts                      ← Env binding tipleri
+│   ├── durable-objects/
+│   │   ├── GameRoom.ts             ← OYUNUN KALBİ (~2100 satır): tüm game loop, action handling,
+│   │   │                             bot'lar, timer/alarm yönetimi, reconnect, AFK→bot devralma
+│   │   └── LobbyRoom.ts            ← Pre-game oda: ready/color/chat/bot ekleme/START_GAME
+│   ├── db/
+│   │   ├── schema.ts               ← Drizzle şeması (10 tablo)
+│   │   └── client.ts               ← Neon bağlantı factory
+│   ├── auth/                       ← session, middleware, guest, google, magic-link
+│   ├── routes/                     ← health, auth, user, lobby, game, cleanup (REST)
+│   ├── services/
+│   │   ├── matchmaking.ts          ← In-memory ELO-range queue (±300, 30sn sonra genişler)
+│   │   │                             NOT: production için DO/external queue gerekiyor
+│   │   └── stats.ts                ← ESKİ/kullanılmıyor — canlı ELO yolu GameRoom + @catan/core
+│   └── middleware/rate-limit.ts
+├── migrations/                     ← Drizzle SQL migration'ları (0000...0004)
+├── wrangler.toml
+└── drizzle.config.ts
 ```
+
+## Komutlar
+
+```bash
+pnpm dev            # wrangler dev (localhost:8787)
+pnpm deploy         # wrangler deploy
+pnpm db:generate    # drizzle-kit generate (şema değişince migration üret)
+pnpm db:migrate     # drizzle-kit migrate
+pnpm db:studio      # drizzle-kit studio
+```
+
+## Mimari Akış
+
+1. Client REST ile lobby oluşturur/katılır (`routes/lobby.ts`)
+2. `GET /ws/lobby/:lobbyId` → session doğrulanır → istek `LobbyRoom` DO'suna forward edilir
+3. Host START_GAME → LobbyRoom `games` + `game_players` satırlarını yazar, `GameRoom.fetch(?init=true)` ile oyunu başlatır
+4. `GET /ws/game/:gameId` → `GameRoom` DO'su maçı yönetir (authoritative state DO'da; `games.state` jsonb'ye mirror edilir)
+5. Oyun sonu: `GameRoom` final sıralamayı hesaplar, `computeEloChanges` (sadece ranked) + XP/level uygular, `user_stats` + `users`'ı günceller
 
 ## WebSocket Mesaj Protokolü
 
-### Client → Server
+Kontratın tek kaynağı: `packages/catan-core/src/protocol.ts` (`ClientMessage`, `ServerMessage`, `LobbyClientMessage`, `LobbyServerMessage`). Başlıca action'lar:
 
-```json
-{ "type": "JOIN_LOBBY", "lobbyId": "abc123", "playerName": "Alice" }
-{ "type": "START_GAME" }
-{ "type": "ROLL_DICE" }
-{ "type": "BUILD_ROAD", "edgeId": 42 }
-{ "type": "BUILD_SETTLEMENT", "intersectionId": 15 }
-{ "type": "BUILD_CITY", "intersectionId": 15 }
-{ "type": "BUY_DEV_CARD" }
-{ "type": "PLAY_DEV_CARD", "cardType": "knight", "robberHex": 7, "stealFrom": "player2" }
-{ "type": "PLAY_DEV_CARD", "cardType": "road_building", "edges": [3, 7] }
-{ "type": "PLAY_DEV_CARD", "cardType": "year_of_plenty", "resources": ["lumber", "ore"] }
-{ "type": "PLAY_DEV_CARD", "cardType": "monopoly", "resource": "grain" }
-{ "type": "OFFER_TRADE", "offer": {"lumber":2}, "want": {"ore":1}, "targetPlayer": "player3" }
-{ "type": "ACCEPT_TRADE", "tradeId": "t1" }
-{ "type": "REJECT_TRADE", "tradeId": "t1" }
-{ "type": "MARITIME_TRADE", "give": {"lumber":4}, "want": {"ore":1} }
-{ "type": "MOVE_ROBBER", "hexId": 5, "stealFrom": "player2" }
-{ "type": "END_TURN" }
-```
+- Client → Server: `ROLL_DICE`, `BUILD_ROAD/SETTLEMENT/CITY`, `BUY_DEV_CARD`, `PLAY_DEV_CARD`, `OFFER/ACCEPT/REJECT_TRADE`, `MARITIME_TRADE`, `MOVE_ROBBER`, `DISCARD_RESOURCES`, `END_TURN`
+- Server → Client: `GAME_STATE` (redacted public state), `PRIVATE_STATE`, `DICE_ROLLED`, `TRADE_OFFERED`, `GAME_OVER`, `ERROR`
 
-### Server → Client
-
-```json
-{ "type": "GAME_STATE", "state": { ...GameState } }
-{ "type": "ERROR", "code": "INVALID_ACTION", "message": "..." }
-{ "type": "DICE_ROLLED", "values": [3, 5], "total": 8 }
-{ "type": "RESOURCES_PRODUCED", "production": { "player1": {"ore":1}, "player2": {"lumber":2} } }
-{ "type": "TRADE_OFFERED", "tradeId": "t1", "from": "player1", "offer": {...}, "want": {...} }
-{ "type": "GAME_OVER", "winner": "player2", "victoryPoints": 10 }
-```
+Yeni mesaj tipi eklerken önce `protocol.ts`'i güncelle, sonra `GameRoom.handleAction` ve web tarafını.
 
 ## Game Logic Prensipleri
-
-### State Mutations
-
-- Tüm state değişiklikleri `engine.go`'daki `ApplyAction()` fonksiyonundan geçer
-- Her action validate edilir, sonra state güncellenir, sonra broadcast edilir
-- Hata durumunda state değişmez, sadece hata mesajı döner
 
 ### Validasyon Sırası
 
 1. Oyuncunun sırası mı? (`currentPlayer` check)
 2. Turn phase doğru mu? (roll → trade → build → done)
-3. Action tipine göre kural validasyonu (rules.go)
-4. Yeterli kaynak var mı?
-5. State'i güncelle
-6. VP kontrol et (10+ VP → oyun bitti)
-7. Broadcast
+3. Action tipine göre kural validasyonu (`@catan/core` gameRules/tradeRules)
+4. Yeterli kaynak var mı? (`canAfford` / `deductCost`)
+5. State'i güncelle (DO memory + storage)
+6. VP kontrol et (10+ VP → oyun bitti, finalize + DB persist)
+7. Broadcast (public state herkese, private state sahibine)
 
-### Longest Road Algoritması
+### Alarm/Timer Yönetimi (GameRoom)
 
-- Her road placement veya settlement/city build'de hesapla
-- DFS ile her edge'den başlayarak en uzun path'i bul
-- Branch'ler sayılmaz, sadece tek continuous path
-- Rakip settlement/city path'i keser
+DO'nun tek alarm slotu var; `rescheduleAlarms()` şu alarmları tek slot üzerinden önceliklendirir: bot_turn, turn_timer, trade_timeout, discard_timeout, idle_cleanup. Yeni bir zamanlı davranış eklerken bu mekanizmaya entegre et, ayrı alarm kurma.
 
-### Largest Army
+### Bot & Bağlantı Yaşam Döngüsü
 
-- Her knight oynamada güncelle
-- `knightsPlayed >= 3` ve mevcut largest army sahibinden fazla → transfer
+- Bot heuristikleri `@catan/core/bot` + GameRoom içi yardımcılar (`botPickSettlement`, `botTryBuild`, ...)
+- 3 idle turn sonrası AFK oyuncu bot'a devredilir; reconnect'te geri alınır
+- Bot id'leri `bot_*` — `game_players`'a YAZILMAZ (users FK nedeniyle)
+- Disconnect grace window + per-tab session replacement + reconnect'te full/private state resync var
 
-## API Endpoints (REST)
+### DB Şeması (özet)
 
-```
-GET  /health
-POST /lobby/create          → { lobbyId, code }
-POST /lobby/:id/join        → { playerId, token }
-GET  /lobby/:id             → LobbyState
-WS   /ws/:lobbyId/:playerId ← WebSocket upgrade
-```
+`users` (tag, elo, xp, gems), `sessions`, `magic_link_tokens`, `oauth_accounts`, `lobbies`, `lobby_players`, `games` (jsonb state/board), `game_players` (final istatistikler), `game_actions` (replay log), `user_stats`.
+
+## Cron'lar (`scheduled` handler, `index.ts`)
+
+- `0 */4 * * *` — stale/abandoned game + lobby temizliği
+- `0 3 * * 0` — orphan guest kullanıcı temizliği (haftalık)
 
 ## Geliştirme Notları
 
-- Her oyun kendi goroutine/room'unda çalışır
-- Race condition'lardan kaçınmak için oyun state'i mutex ile korunur
-- Test için `internal/game/` paketinin tüm public fonksiyonları unit test edilmeli
-- Özellikle: distance rule, longest road, resource production, 7 discard hesaplama
+- Kural değişikliği = önce `@catan/core`, sonra GameRoom orchestration
+- `services/stats.ts` ölü kod — ELO için kullanma
+- Test yok; kural fonksiyonları için testler `packages/catan-core`'a yazılmalı (vitest hazır)
+- Monetizasyon (gems store) henüz yok; şemada `gems` alanı hazır, plan `docs/payment-system.md`

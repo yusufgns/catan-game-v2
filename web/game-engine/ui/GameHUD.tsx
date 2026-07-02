@@ -188,18 +188,18 @@ export default function GameHUD({ state, actions, computeVP }: GameHUDProps) {
               gap: 8,
               padding: "8px 16px",
               borderRadius: 12,
-              background: "rgba(255, 255, 255, 0.75)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              border: "1px solid rgba(220,38,38,0.15)",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+              background: "rgba(17, 22, 36, 0.85)",
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
+              border: "1px solid rgba(248,113,113,0.4)",
+              boxShadow: "0 0 18px rgba(248,113,113,0.15), 0 8px 24px rgba(4,10,22,0.4)",
             }}
           >
             <span
               style={{
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 800,
-                color: "rgba(0,0,0,0.4)",
+                color: "#f87171",
                 textTransform: "uppercase",
                 letterSpacing: 1,
               }}
@@ -257,26 +257,26 @@ export default function GameHUD({ state, actions, computeVP }: GameHUDProps) {
               alignItems: "center",
               justifyContent: "center",
               gap: 10,
-              width: 228,
-              padding: "8px 20px",
+              width: 240,
+              padding: "9px 20px",
               borderRadius: 12,
-              background: "rgba(255, 255, 255, 0.75)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
+              background: "rgba(17, 22, 36, 0.85)",
+              backdropFilter: "blur(18px)",
+              WebkitBackdropFilter: "blur(18px)",
               border: state.diceTotal === 7
-                ? "1px solid rgba(220,38,38,0.25)"
-                : "1px solid rgba(255,255,255,0.5)",
+                ? "1px solid rgba(248,113,113,0.5)"
+                : "1px solid rgba(255,255,255,0.14)",
               boxShadow: state.diceTotal === 7
-                ? "0 0 16px rgba(220,38,38,0.08), 0 4px 16px rgba(0,0,0,0.06)"
-                : "0 4px 16px rgba(0,0,0,0.06)",
+                ? "0 0 18px rgba(248,113,113,0.2), 0 8px 24px rgba(4,10,22,0.4)"
+                : "0 8px 28px rgba(4,10,22,0.38)",
             }}
           >
             <span style={{ fontSize: 18 }}>🎲</span>
             <span
               style={{
-                fontSize: 16,
+                fontSize: 17,
                 fontWeight: 900,
-                color: state.diceTotal === 7 ? "#dc2626" : "#78350f",
+                color: state.diceTotal === 7 ? "#f87171" : "#f0b429",
                 letterSpacing: 1,
               }}
             >

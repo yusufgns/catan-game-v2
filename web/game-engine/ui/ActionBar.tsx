@@ -2,6 +2,7 @@
 
 import { Home, Building2, Dice5, ChevronRight, ArrowLeftRight, Route } from "lucide-react";
 import type { ReactNode } from "react";
+import { ACCENT, PANEL, PANEL_RAISED, TXT } from "./theme";
 
 interface ActionBarProps {
   isSetup: boolean;
@@ -29,24 +30,14 @@ export default function ActionBar({
 }: ActionBarProps) {
   if (isSetup) {
     return (
-      <div
-        style={{
-          padding: "12px 24px",
-          borderRadius: 12,
-          background: "rgba(255, 255, 255, 0.75)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.6)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)",
-        }}
-      >
+      <div style={{ padding: "14px 26px", borderRadius: 13, ...PANEL_RAISED }}>
         <span
           style={{
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: 800,
             letterSpacing: 1,
             textTransform: "uppercase",
-            color: "#92400e",
+            color: ACCENT.gold,
           }}
         >
           {actionMode === "settlement" ? "Place Settlement" : "Place Road"}
@@ -67,41 +58,38 @@ export default function ActionBar({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
-      {/* Action row — same width as build row: 3×72 + 2×6 = 228 */}
+      {/* Action row — same width as build row: 3×76 + 2×6 = 240 */}
       <div
         style={{
           display: "flex",
-          width: 228,
-          borderRadius: 12,
+          width: 240,
+          borderRadius: 13,
           overflow: "hidden",
-          background: "rgba(255, 255, 255, 0.7)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          border: "1px solid rgba(255,255,255,0.5)",
-          boxShadow: "0 4px 20px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.03)",
+          ...PANEL,
         }}
       >
         {/* Trade */}
         <button
           onClick={canTrade ? onTrade : undefined}
+          aria-label="Trade"
           style={{
             flex: 1,
-            height: 56,
+            height: 58,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             gap: 3,
-            background: canTrade ? "rgba(217,119,6,0.08)" : "transparent",
+            background: canTrade ? ACCENT.goldSoft : "transparent",
             border: "none",
-            borderRight: "1px solid rgba(0,0,0,0.06)",
+            borderRight: "1px solid rgba(255,255,255,0.1)",
             cursor: canTrade ? "pointer" : "default",
-            opacity: canTrade ? 1 : 0.35,
+            opacity: canTrade ? 1 : 0.45,
             transition: "all 0.15s ease",
           }}
         >
-          <ArrowLeftRight size={18} style={{ color: canTrade ? "#92400e" : "rgba(0,0,0,0.3)" }} />
-          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, color: canTrade ? "#92400e" : "rgba(0,0,0,0.3)", textTransform: "uppercase" }}>
+          <ArrowLeftRight size={18} style={{ color: canTrade ? ACCENT.gold : TXT.disabled }} />
+          <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.8, color: canTrade ? ACCENT.gold : TXT.disabled, textTransform: "uppercase" }}>
             Trade
           </span>
         </button>
@@ -109,26 +97,27 @@ export default function ActionBar({
         {/* Roll */}
         <button
           onClick={canRoll ? onRoll : undefined}
+          aria-label="Roll dice"
           style={{
             flex: 1.5,
-            height: 56,
+            height: 58,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 7,
-            background: canRoll ? "rgba(34,197,94,0.12)" : "transparent",
+            gap: 8,
+            background: canRoll ? ACCENT.greenSoft : "transparent",
             border: "none",
-            borderRight: "1px solid rgba(0,0,0,0.06)",
+            borderRight: "1px solid rgba(255,255,255,0.1)",
             cursor: canRoll ? "pointer" : "default",
             transition: "background 0.15s ease",
           }}
         >
-          <Dice5 size={20} style={{ color: canRoll ? "#15803d" : "rgba(0,0,0,0.25)" }} />
+          <Dice5 size={21} style={{ color: canRoll ? ACCENT.green : TXT.disabled }} />
           <span
             style={{
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 900,
-              color: canRoll ? "#15803d" : "rgba(0,0,0,0.25)",
+              color: canRoll ? ACCENT.green : TXT.disabled,
               letterSpacing: 1,
             }}
           >
@@ -139,28 +128,29 @@ export default function ActionBar({
         {/* End Turn */}
         <button
           onClick={canEndTurn ? onEndTurn : undefined}
+          aria-label="End turn"
           style={{
             flex: 1,
-            height: 56,
+            height: 58,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             gap: 3,
-            background: canEndTurn ? "rgba(34,197,94,0.12)" : "transparent",
+            background: canEndTurn ? ACCENT.greenSoft : "transparent",
             border: "none",
             cursor: canEndTurn ? "pointer" : "default",
-            opacity: canEndTurn ? 1 : 0.3,
+            opacity: canEndTurn ? 1 : 0.45,
             transition: "all 0.15s ease",
           }}
         >
-          <ChevronRight size={20} style={{ color: canEndTurn ? "#15803d" : "rgba(0,0,0,0.2)" }} />
+          <ChevronRight size={20} style={{ color: canEndTurn ? ACCENT.green : TXT.disabled }} />
           <span
             style={{
-              fontSize: 9,
+              fontSize: 11,
               fontWeight: 800,
-              letterSpacing: 1,
-              color: canEndTurn ? "#15803d" : "rgba(0,0,0,0.2)",
+              letterSpacing: 0.8,
+              color: canEndTurn ? ACCENT.green : TXT.disabled,
               textTransform: "uppercase",
             }}
           >
@@ -178,41 +168,38 @@ export default function ActionBar({
             <button
               key={b.mode}
               onClick={disabled ? undefined : () => onSetMode(b.mode)}
+              aria-label={`Build ${b.label}`}
               style={{
                 position: "relative",
-                width: 72,
-                height: 56,
+                width: 76,
+                height: 58,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 4,
-                background: active
-                  ? "rgba(255, 255, 255, 0.9)"
-                  : "rgba(255, 255, 255, 0.6)",
-                backdropFilter: "blur(20px)",
-                WebkitBackdropFilter: "blur(20px)",
+                ...(active ? PANEL_RAISED : PANEL),
                 border: active
-                  ? "2px solid #d97706"
-                  : "1px solid rgba(255,255,255,0.5)",
-                borderRadius: 12,
+                  ? `2px solid ${ACCENT.gold}`
+                  : "1px solid rgba(255,255,255,0.14)",
+                borderRadius: 13,
                 cursor: disabled ? "default" : "pointer",
                 boxShadow: active
-                  ? "0 0 20px rgba(217,119,6,0.15), 0 4px 16px rgba(0,0,0,0.08)"
-                  : "0 2px 12px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03)",
+                  ? `0 0 20px ${ACCENT.gold}33, 0 6px 20px rgba(4,10,22,0.4)`
+                  : (PANEL.boxShadow as string),
                 transition: "all 0.15s ease",
-                opacity: disabled ? 0.35 : 1,
+                opacity: disabled ? 0.45 : 1,
               }}
             >
-              <span style={{ color: active ? "#92400e" : "rgba(0,0,0,0.3)", display: "flex" }}>
+              <span style={{ color: active ? ACCENT.gold : TXT.secondary, display: "flex" }}>
                 {b.icon}
               </span>
               <span
                 style={{
-                  fontSize: 10,
+                  fontSize: 11,
                   fontWeight: 800,
-                  letterSpacing: 1.2,
-                  color: active ? "#92400e" : "rgba(0,0,0,0.3)",
+                  letterSpacing: 0.8,
+                  color: active ? ACCENT.gold : TXT.secondary,
                   textTransform: "uppercase",
                 }}
               >
@@ -231,13 +218,14 @@ export default function ActionBar({
                   justifyContent: "center",
                   borderRadius: 8,
                   padding: "0 6px",
-                  background: active ? "#d97706" : "rgba(0,0,0,0.5)",
+                  background: active ? ACCENT.gold : "rgba(8, 12, 22, 0.92)",
+                  border: active ? "none" : "1px solid rgba(255,255,255,0.2)",
                   boxShadow: active
-                    ? "0 2px 8px rgba(217,119,6,0.4)"
-                    : "0 2px 6px rgba(0,0,0,0.15)",
+                    ? `0 2px 8px ${ACCENT.gold}66`
+                    : "0 2px 6px rgba(0,0,0,0.3)",
                 }}
               >
-                <span style={{ fontSize: 12, fontWeight: 900, color: "#fff" }}>
+                <span style={{ fontSize: 12, fontWeight: 900, color: active ? "#1a1206" : TXT.primary }}>
                   {b.count}
                 </span>
               </div>

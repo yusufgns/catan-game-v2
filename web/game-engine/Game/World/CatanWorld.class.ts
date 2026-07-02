@@ -112,32 +112,33 @@ export default class CatanWorld {
       key.shadow.camera.updateProjectionMatrix();
 
       if (isNight) {
-        // Moonlight — cool blue, brighter than default night preset
-        key.color.setHex(0x8ab8e8);
-        key.intensity = 1.8;
+        // Bright moonlight — night should be atmospheric, never murky.
+        // The board must stay fully readable (tokens, terrain, pieces).
+        key.color.setHex(0x9cc4ee);
+        key.intensity = 2.4;
       }
     }
 
     if (fill) {
       fill.position.set(-10, 10, 14);
       if (isNight) {
-        fill.color.setHex(0x4a6a9a);
-        fill.intensity = 0.4;
+        fill.color.setHex(0x5a7cae);
+        fill.intensity = 0.7;
       }
     }
 
     if (rim) {
       rim.position.set(10, 12, -6);
       if (isNight) {
-        rim.color.setHex(0x6688bb);
-        rim.intensity = 0.25;
+        rim.color.setHex(0x88a8d8);
+        rim.intensity = 0.5;
       }
     }
 
     if (ambient) {
       if (isNight) {
-        ambient.color.setHex(0x3a5a8a);
-        ambient.intensity = 0.25;
+        ambient.color.setHex(0x50699a);
+        ambient.intensity = 0.55;
       } else {
         // Daytime — ensure bright and vibrant
         ambient.intensity = Math.max(ambient.intensity, 0.65);
@@ -181,12 +182,14 @@ export default class CatanWorld {
     c.width = c.height = size;
     const ctx = c.getContext('2d')!;
     const cx = size / 2, cy = size / 2;
+    // Shallow at the island (center), deepening outward — ripples/foam
+    // concentrate around the island's shoreline instead of open water.
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
-    grad.addColorStop(0, 'rgb(0, 0, 160)');    // Moderately deep center
-    grad.addColorStop(0.2, 'rgb(0, 0, 120)');
-    grad.addColorStop(0.4, 'rgb(0, 0, 70)');   // Ripples visible from here
-    grad.addColorStop(0.7, 'rgb(0, 0, 40)');
-    grad.addColorStop(1, 'rgb(0, 0, 50)');
+    grad.addColorStop(0, 'rgb(0, 0, 22)');
+    grad.addColorStop(0.08, 'rgb(0, 0, 40)');
+    grad.addColorStop(0.18, 'rgb(0, 0, 85)');
+    grad.addColorStop(0.45, 'rgb(0, 0, 150)');
+    grad.addColorStop(1, 'rgb(0, 0, 195)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, size, size);
     const tex = new THREE.CanvasTexture(c);
@@ -220,9 +223,9 @@ export default class CatanWorld {
     const baseGeo = new THREE.PlaneGeometry(WS, WS, 1, 1);
     const baseMat = new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.1 });
 
-    // Winter water colors used for ALL seasons (user preference — beautiful icy blue)
-    const waterShallow = new THREE.Color(0x5aaacf);
-    const waterDeep = new THREE.Color(0x1a5888);
+    // Tropical island water — turquoise shallows into deep sapphire
+    const waterShallow = new THREE.Color(0x53c3dc);
+    const waterDeep = new THREE.Color(0x0f4e85);
 
     this.groundUniforms = {
       uDensityMap: { value: densityMap },
@@ -276,21 +279,21 @@ export default class CatanWorld {
       uDensityMaskMin: { value: 0.0 },
       uDensityMaskMax: { value: 0.01 },
       uShoreMaskThreshold: { value: 0.8 },
-      uNoiseScale1: { value: 3.0 },
-      uNoiseScale2: { value: 5.0 },
-      uNoiseSpeed1: { value: 0.08 },
-      uNoiseSpeed2: { value: 0.05 },
+      uNoiseScale1: { value: 8.0 },
+      uNoiseScale2: { value: 13.0 },
+      uNoiseSpeed1: { value: 0.1 },
+      uNoiseSpeed2: { value: 0.07 },
       uNoiseMix1: { value: 0.6 },
       uNoiseMix2: { value: 0.4 },
-      uNoiseDepthInfluence: { value: 0.35 },
-      uRippleFrequency: { value: 8.0 },
+      uNoiseDepthInfluence: { value: 0.5 },
+      uRippleFrequency: { value: 16.0 },
       uRippleInnerEdge: { value: 0.02 },
       uRippleOuterEdge: { value: 0.08 },
-      uBreakupMin: { value: 0.2 },
-      uBreakupMax: { value: 0.6 },
+      uBreakupMin: { value: 0.25 },
+      uBreakupMax: { value: 0.65 },
       uWaterDepthFade: { value: 0.05 },
       uDiscardThreshold: { value: 0.1 },
-      uRippleOpacity: { value: 1.2 },
+      uRippleOpacity: { value: 0.42 },
       uSplashesRatio: { value: 0.0 },
       uSplashesNoiseFrequency: { value: 0.66 },
       uSplashesTimeFrequency: { value: 6.0 },
@@ -325,10 +328,10 @@ export default class CatanWorld {
     const envTime = this.environmentTimeManager.envTime || 'day';
     const season = this.seasonManager.currentSeason || 'spring';
 
-    // Always use winter water colors (beautiful icy blue, user preference)
+    // Tropical water — turquoise shallows into deep sapphire
     const presets = {
-      day:   [0x5aaacf, 0x1a5888],
-      night: [0x2a4868, 0x0a2040],
+      day:   [0x53c3dc, 0x0f4e85],
+      night: [0x2e6a8a, 0x0b2a4a],
     };
     const [shallow, deep] = presets[envTime] || presets.day;
 

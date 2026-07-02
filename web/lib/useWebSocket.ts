@@ -93,6 +93,8 @@ export function useWebSocket({
   const send = useCallback((data: any) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
+    } else {
+      console.warn("[ws] not open — message dropped:", data?.type ?? data);
     }
   }, []);
 

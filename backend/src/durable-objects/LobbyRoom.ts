@@ -18,6 +18,21 @@ interface LobbyPlayer {
   isHost: boolean;
 }
 
+/** Serialized onto each WebSocket so identity survives DO hibernation. */
+interface WsAttachment {
+  connId: string;
+  playerId: string;
+  tabId: string;
+}
+
+interface LobbyMeta {
+  lobbyId: string | null;
+  lobbyCode: string | null;
+  mode: string;
+  settings: Record<string, unknown>;
+  closed: boolean;
+}
+
 export class LobbyRoom extends DurableObject<Env> {
   private connections = new Map<string, WebSocket>(); // connId → ws
   private playerConnections = new Map<string, Set<string>>(); // playerId → Set<connId>
@@ -30,6 +45,47 @@ export class LobbyRoom extends DurableObject<Env> {
   private settings: Record<string, unknown> = {};
   private closed = false;
 
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    // Hibernatable WebSockets keep connections open while the DO instance is
+    // evicted from memory. Everything above is in-memory only, so on wake we
+    // must rehydrate from storage + socket attachments — otherwise every
+    // message hits empty maps and gets silently dropped.
+    ctx.blockConcurrencyWhile(async () => {
+      const meta = await ctx.storage.get<LobbyMeta>('meta');
+      if (meta) {
+        this.lobbyId = meta.lobbyId;
+        this.lobbyCode = meta.lobbyCode;
+        this.mode = meta.mode;
+        this.settings = meta.settings;
+        this.closed = meta.closed;
+      }
+      const players = await ctx.storage.get<LobbyPlayer[]>('players');
+      if (players) this.players = new Map(players.map(p => [p.id, p]));
+
+      for (const ws of ctx.getWebSockets()) {
+        const att = this.getAttachment(ws);
+        if (!att) continue;
+        this.connections.set(att.connId, ws);
+        if (!this.playerConnections.has(att.playerId)) this.playerConnections.set(att.playerId, new Set());
+        this.playerConnections.get(att.playerId)!.add(att.connId);
+        if (att.tabId) this.playerTabIds.set(att.playerId, att.tabId);
+      }
+
+      // Players whose sockets died while hibernated get a fresh grace period
+      // (their setTimeout-based disconnect timers were lost with the instance).
+      for (const p of this.players.values()) {
+        if (p.id.startsWith('bot_')) continue;
+        const conns = this.playerConnections.get(p.id);
+        if (conns && conns.size > 0) continue;
+        this.disconnectTimers.set(p.id, setTimeout(() => {
+          this.disconnectTimers.delete(p.id);
+          this.removePlayer(p.id, false);
+        }, DISCONNECT_GRACE_MS));
+      }
+    });
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (this.closed) {
       return new Response(JSON.stringify({ type: 'ERROR', code: 'LOBBY_CLOSED', message: 'Lobby has been closed' }), { status: 410 });
@@ -40,6 +96,9 @@ export class LobbyRoom extends DurableObject<Env> {
     if (url.searchParams.has('lobbyId')) this.lobbyId = url.searchParams.get('lobbyId');
     if (url.searchParams.has('mode')) this.mode = url.searchParams.get('mode') || 'classic';
     if (url.searchParams.has('code')) this.lobbyCode = url.searchParams.get('code');
+    if (url.searchParams.has('lobbyId') || url.searchParams.has('mode') || url.searchParams.has('code')) {
+      this.persistMeta();
+    }
 
     if (request.headers.get('Upgrade') !== 'websocket') {
       return new Response(JSON.stringify({
@@ -84,6 +143,7 @@ export class LobbyRoom extends DurableObject<Env> {
     this.playerTabIds.set(playerId, tabId);
 
     this.ctx.acceptWebSocket(server, [connId]);
+    server.serializeAttachment({ connId, playerId, tabId } satisfies WsAttachment);
     this.connections.set(connId, server);
     if (!this.playerConnections.has(playerId)) this.playerConnections.set(playerId, new Set());
     this.playerConnections.get(playerId)!.add(connId);
@@ -101,6 +161,7 @@ export class LobbyRoom extends DurableObject<Env> {
       const usedColors = new Set([...this.players.values()].map(p => p.color));
       const color = PLAYER_COLORS.find(c => !usedColors.has(c)) || PLAYER_COLORS[0];
       this.players.set(playerId, { id: playerId, name: playerName, color, ready: false, isHost });
+      this.persistPlayers();
     }
 
     // Reset idle timer — lobby is active
@@ -128,6 +189,7 @@ export class LobbyRoom extends DurableObject<Env> {
         const player = this.players.get(playerId);
         if (player) {
           player.ready = !!msg.ready;
+          this.persistPlayers();
           this.broadcastLobbyState();
         }
         break;
@@ -141,6 +203,7 @@ export class LobbyRoom extends DurableObject<Env> {
         );
         if (!usedColors.has(msg.color)) {
           player.color = msg.color;
+          this.persistPlayers();
           this.broadcastLobbyState();
         } else {
           ws.send(JSON.stringify({ type: 'ERROR', code: 'COLOR_TAKEN', message: 'Color already taken' }));
@@ -181,6 +244,7 @@ export class LobbyRoom extends DurableObject<Env> {
           ready: true,
           isHost: false,
         });
+        this.persistPlayers();
         this.broadcastLobbyState();
         break;
       }
@@ -194,6 +258,7 @@ export class LobbyRoom extends DurableObject<Env> {
         const botToRemove = msg.botId;
         if (botToRemove && typeof botToRemove === 'string' && botToRemove.startsWith('bot_') && this.players.has(botToRemove)) {
           this.players.delete(botToRemove);
+          this.persistPlayers();
           this.broadcastLobbyState();
         }
         break;
@@ -207,6 +272,7 @@ export class LobbyRoom extends DurableObject<Env> {
         }
         if (msg.settings && typeof msg.settings === 'object') {
           this.settings = { ...this.settings, ...msg.settings };
+          this.persistMeta();
           this.broadcastLobbyState();
         }
         break;
@@ -309,6 +375,7 @@ export class LobbyRoom extends DurableObject<Env> {
       const botIds = [...this.players.keys()].filter(id => id.startsWith('bot_'));
       for (const botId of botIds) this.players.delete(botId);
 
+      this.persistPlayers();
       this.broadcast({ type: 'PLAYER_LEFT', playerId });
       this.ctx.storage.setAlarm(Date.now() + 3000); // close lobby shortly
       return;
@@ -323,6 +390,7 @@ export class LobbyRoom extends DurableObject<Env> {
       }
     }
 
+    this.persistPlayers();
     this.broadcast({ type: 'PLAYER_LEFT', playerId });
     this.broadcastLobbyState();
   }
@@ -335,6 +403,7 @@ export class LobbyRoom extends DurableObject<Env> {
 
   private async closeLobby(reason: string) {
     this.closed = true;
+    this.persistMeta();
 
     // Notify any remaining connections
     this.broadcast({ type: 'LOBBY_CLOSED', reason } as any);
@@ -345,6 +414,7 @@ export class LobbyRoom extends DurableObject<Env> {
     }
     this.connections.clear();
     this.players.clear();
+    this.persistPlayers();
 
     // Clear all disconnect timers
     for (const timer of this.disconnectTimers.values()) {
@@ -427,26 +497,38 @@ export class LobbyRoom extends DurableObject<Env> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  private getPlayerId(ws: WebSocket): string | null {
-    for (const [connId, conn] of this.connections) {
-      if (conn === ws) {
-        // connId format: "playerId_timestamp" → extract playerId
-        const playerId = connId.split('_').slice(0, -1).join('_');
-        // But playerId itself might contain underscore, so find in playerConnections
-        for (const [pid, connIds] of this.playerConnections) {
-          if (connIds.has(connId)) return pid;
-        }
-        return connId.split('_')[0]; // fallback
-      }
+  private getAttachment(ws: WebSocket): WsAttachment | null {
+    try {
+      return (ws.deserializeAttachment() as WsAttachment | null) ?? null;
+    } catch {
+      return null;
     }
-    return null;
+  }
+
+  private getPlayerId(ws: WebSocket): string | null {
+    return this.getAttachment(ws)?.playerId ?? null;
   }
 
   private getConnId(ws: WebSocket): string | null {
-    for (const [connId, conn] of this.connections) {
-      if (conn === ws) return connId;
-    }
-    return null;
+    return this.getAttachment(ws)?.connId ?? null;
+  }
+
+  // ── Hibernation persistence ───────────────────────────────────────────────
+  // Fire-and-forget: DO storage writes are coalesced and ordered; output gates
+  // ensure they land before external side effects become visible.
+
+  private persistPlayers() {
+    void this.ctx.storage.put('players', [...this.players.values()]);
+  }
+
+  private persistMeta() {
+    void this.ctx.storage.put('meta', {
+      lobbyId: this.lobbyId,
+      lobbyCode: this.lobbyCode,
+      mode: this.mode,
+      settings: this.settings,
+      closed: this.closed,
+    } satisfies LobbyMeta);
   }
 
   /** Count real (non-bot) players */
